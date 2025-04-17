@@ -31,6 +31,7 @@ private:
   bool selectHandler(int argc, char** argv);
   bool servicesHandler(int argc, char** argv);
   bool subscribeHandler(int argc, char** argv);
+  bool unsubscribeHandler(int argc, char** argv);
   bool readHandler(int argc, char** argv);
   bool writeHandler(int argc, char** argv);
   bool disconnectHandler(int argc, char** argv);

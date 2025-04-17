@@ -15,11 +15,14 @@ const Command CommandProcessor::COMMANDS[] = {
   {"subscribe", "Subscribe to notifications from a characteristic", 
     "subscribe <service index> <characteristic index>", 
     &CommandProcessor::subscribeHandler},
+  {"unsubscribe", "Unsubscribe from notifications of a characteristic", 
+    "unsubscribe <service index> <characteristic index>", 
+    &CommandProcessor::unsubscribeHandler},
   {"read", "Read value from a characteristic", 
     "read <service index> <characteristic index>", 
     &CommandProcessor::readHandler},
   {"write", "Write data to a characteristic", 
-    "write <service index> <characteristic index> <data type> <data>\n    Data types: hex, string, int", 
+    "write <service index> <characteristic index> <data>", 
     &CommandProcessor::writeHandler},
   {"disconnect", "Disconnect from the current device", "disconnect", 
     &CommandProcessor::disconnectHandler},
@@ -127,6 +130,14 @@ bool CommandProcessor::subscribeHandler(int argc, char** argv) {
   return true;
 }
 
+bool CommandProcessor::unsubscribeHandler(int argc, char** argv) {
+  if (argc != 2) return false;
+  int sIndex = atoi(argv[0]);
+  int cIndex = atoi(argv[1]);
+  bleManager.unsubscribeCharacteristic(sIndex, cIndex);
+  return true;
+}
+
 bool CommandProcessor::readHandler(int argc, char** argv) {
   if (argc != 2) return false;
   int sIndex = atoi(argv[0]);
@@ -136,43 +147,17 @@ bool CommandProcessor::readHandler(int argc, char** argv) {
 }
 
 bool CommandProcessor::writeHandler(int argc, char** argv) {
-  if (argc < 4) return false;
+  if (argc < 3) return false;
   
   int sIndex = atoi(argv[0]);
   int cIndex = atoi(argv[1]);
-  String dataType = argv[2];
   
-  String data = argv[3];
-  for (int i = 4; i < argc; i++) {
-    data += " ";
-    data += argv[i];
+  uint8_t* data = new uint8_t[argc - 2];
+  for (int i = 2; i < argc; i++) {
+    data[i - 2] = static_cast<uint8_t>(atoi(argv[i]));
   }
   
-  if (dataType == "hex") {
-    if (data.length() % 2 != 0) {
-      Serial.println("Invalid hex data length. Must be even.");
-      return false;
-    }
-    for (int i = 0; i < data.length(); i += 2) {
-      String byteString = data.substring(i, i + 2);
-      uint8_t hexValue = (uint8_t)strtol(byteString.c_str(), nullptr, 16);
-      bleManager.writeCharacteristic(sIndex, cIndex, hexValue, sizeof(hexValue));
-    }
-  } 
-  else if (dataType == "string") {
-    const uint8_t *byteArray = reinterpret_cast<const uint8_t*>(data.c_str());
-    bleManager.writeCharacteristic(sIndex, cIndex, *byteArray, data.length());
-  } 
-  else if (dataType == "int") {
-    const uint8_t value = data.toInt();
-    bleManager.writeCharacteristic(sIndex, cIndex, value, sizeof(value));
-  } 
-  else {
-    Serial.print("Unknown data type: ");
-    Serial.println(dataType);
-    Serial.println("Supported types: hex, string, int");
-    return false;
-  }
+  bleManager.writeCharacteristic(sIndex, cIndex, data, sizeof(data));
   
   return true;
 }
@@ -189,33 +174,32 @@ bool CommandProcessor::movesenseHandler(int argc, char** argv) {
 
   int serviceIndex = 5;
   int notifyCharIndex = 1;
-  int writeCharIndex = 0;  
-
-  bleManager.subscribeCharacteristic(serviceIndex, notifyCharIndex);
+  int writeCharIndex = 0; 
   
   if (subcommand == "hello") {
     const uint8_t helloMessage[] = {0, 123};
-    bleManager.writeCharacteristic(serviceIndex, writeCharIndex, *helloMessage, sizeof(helloMessage));
+    bleManager.subscribeCharacteristic(serviceIndex, notifyCharIndex);
+    bleManager.writeCharacteristic(serviceIndex, writeCharIndex, helloMessage, sizeof(helloMessage));
     Serial.println("Sent hello command to Movesense");
-    return true;
   }
   else if (subcommand == "subscribe") {
     const uint8_t subscribeCommand[] = {1, 99, '/', 'M', 'e', 'a', 's', '/', 'I', 'M', 'U', '9', '/', '1', '0', '4'};
-    bleManager.writeCharacteristic(serviceIndex, writeCharIndex, *subscribeCommand, sizeof(subscribeCommand));
-    Serial.println("Subscribed to IMU sensor at 104Hz");
-    return true;
+    bleManager.writeCharacteristic(serviceIndex, writeCharIndex, subscribeCommand, sizeof(subscribeCommand));
+    bleManager.subscribeCharacteristic(serviceIndex, notifyCharIndex);
+    Serial.println("Subscribed to IMU sensor at 52Hz");
   }
   else if (subcommand == "unsubscribe") {
-    const uint8_t unsubscribeCommand[] = {2, 99, '/', 'M', 'e', 'a', 's', '/', 'I', 'M', 'U', '9', '/', '1', '0', '4'};
-    bleManager.writeCharacteristic(serviceIndex, writeCharIndex, *unsubscribeCommand, sizeof(unsubscribeCommand));
+    const uint8_t unsubscribeCommand[] = {2, 99};
+    bleManager.writeCharacteristic(serviceIndex, writeCharIndex, unsubscribeCommand, sizeof(unsubscribeCommand));
+    bleManager.unsubscribeCharacteristic(serviceIndex, notifyCharIndex);
     Serial.println("Unsubscribed from IMU sensor");
-    return true;
   }
   else {
     Serial.print("Unknown movesense command: ");
     Serial.println(subcommand);
     return false;
   }
+
 }
 
 void CommandProcessor::printHelp() {

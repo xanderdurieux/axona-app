@@ -3,9 +3,8 @@
 
 #include <Arduino.h>
 
-// Struct to represent one sample of IMU data.
 struct IMUData {
-  uint32_t timestamp; // Timestamp (e.g., in milliseconds or seconds)
+  uint32_t timestamp;
   float accX, accY, accZ;
   float gyroX, gyroY, gyroZ;
   float magX, magY, magZ;
