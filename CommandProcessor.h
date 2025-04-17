@@ -15,16 +15,22 @@ struct Command {
 
 class CommandProcessor {
 public:
-  CommandProcessor(BLEManager &manager) : bleManager(manager) {};
+  static CommandProcessor& getInstance() {
+    static CommandProcessor instance;
+    return instance;
+  }
+
   void processInput();
   void printHelp();
 
-private:  
+private:
+  CommandProcessor();
+  CommandProcessor(const CommandProcessor&) = delete;
+  CommandProcessor& operator=(const CommandProcessor&) = delete;
+
   static const Command COMMANDS[];
   static const int COMMAND_COUNT;
-  
-  BLEManager &bleManager;
-  
+
   bool helpHandler(int argc, char** argv);
   bool scanHandler(int argc, char** argv);
   bool listHandler(int argc, char** argv);

@@ -1,39 +1,39 @@
 #ifndef BLE_MANAGER_H
 #define BLE_MANAGER_H
 
-#include <Arduino.h>
 #include <ArduinoBLE.h>
-
-#define MAX_DEVICES 200
-#define SCAN_TIME 7000
+#include "IMUProcessor.h"
 
 class BLEManager {
 public:
-  BLEManager();
-  
+  static BLEManager& getInstance() {
+    static BLEManager instance;
+    return instance;
+  }
+
   void scanDevices();
   void listDevices();
   bool selectDevice(int index);
   void listServicesAndCharacteristics();
   bool subscribeCharacteristic(int sIndex, int cIndex);
+  bool unsubscribeCharacteristic(int sIndex, int cIndex);
   bool readCharacteristic(int sIndex, int cIndex);
-  bool writeCharacteristic(int sIndex, int cIndex, const uint8_t data, int length);
+  bool writeCharacteristic(int sIndex, int cIndex, const uint8_t *data, int length);
   bool sendMovesenseCommand(int sIndex);
   void disconnect();
 
 private:
-  BLEDevice scannedDevices[MAX_DEVICES];
-  int deviceCount;
+  BLEManager();
+  BLEManager(const BLEManager&) = delete;
+  BLEManager& operator=(const BLEManager&) = delete;
+
+  static void notificationCallback(BLEDevice device, BLECharacteristic characteristic);
+
+  IMUProcessor& imuProcessor;
   BLEDevice selectedDevice;
   BLECharacteristic selectedCharacteristic;
-
-  // Private helper methods
-  bool deviceAlreadyListed(BLEDevice device);
-  uint8_t hexCharToByte(char c);
-  int parseHexString(const String &hexStr, uint8_t *buffer, int bufferSize);
-  
-  // Static callback for notifications
-  static void notificationCallback(BLEDevice device, BLECharacteristic characteristic);
-  };
+  BLEDevice scannedDevices[10];
+  int deviceCount = 0;
+};
 
 #endif
