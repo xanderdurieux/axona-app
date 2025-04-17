@@ -1,14 +1,17 @@
 #include <ArduinoBLE.h>
+#include <Arduino.h>
+
 #include "BLEManager.h"
 #include "CommandProcessor.h"
+#include "IMUProcessor.h"
 
 BLEManager bleManager;
-CommandProcessor commandProcessor(bleManager);
 
 void setup() {
   Serial.begin(115200);
   while (!Serial);
-  
+
+  CommandProcessor& commandProcessor = CommandProcessor::getInstance(&bleManager);
   commandProcessor.printHelp();
   
   if (!BLE.begin()) {
@@ -20,5 +23,5 @@ void setup() {
 
 void loop() {
   BLE.poll();  // Keep BLE stack active
-  commandProcessor.processInput();
+  CommandProcessor::getInstance().processInput();
 }

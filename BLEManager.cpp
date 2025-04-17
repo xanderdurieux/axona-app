@@ -1,8 +1,5 @@
 #include "BLEManager.h"
-#include "IMUData.h"
-
-BLEManager::BLEManager() : deviceCount(0) {
-}
+#include "IMUProcessor.h"
 
 bool BLEManager::deviceAlreadyListed(BLEDevice device) {
   for (int i = 0; i < deviceCount; i++) {
@@ -21,7 +18,7 @@ void BLEManager::scanDevices() {
   while (millis() - startTime < SCAN_TIME) {
     BLEDevice dev = BLE.available();
     if (dev) {
-      if (!deviceAlreadyListed(dev) && deviceCount < MAX_DEVICES) {
+      if (!deviceAlreadyListed(dev) && deviceCount < MAX_DEVICES && dev.rssi() >= MIN_RSSI) {
         scannedDevices[deviceCount++] = dev;
       }
     }
@@ -46,6 +43,7 @@ void BLEManager::listDevices() {
       Serial.print(scannedDevices[i].localName());
       Serial.print(")");
     }
+
     Serial.println();
   }
   Serial.println("Use command 'select <device index>' to connect.\n");
@@ -150,6 +148,42 @@ bool BLEManager::subscribeCharacteristic(int sIndex, int cIndex) {
   }
 }
 
+bool BLEManager::unsubscribeCharacteristic(int sIndex, int cIndex) {
+  if (!selectedDevice) {
+    Serial.println("No device connected.");
+    return false;
+  }
+  if (!selectedDevice.discoverAttributes()) {
+    Serial.println("Service discovery failed.");
+    return false;
+  }
+  int svcCount = selectedDevice.serviceCount();
+  if (sIndex < 0 || sIndex >= svcCount) {
+    Serial.println("Invalid service index.");
+    return false;
+  }
+  BLEService service = selectedDevice.service(sIndex);
+  int charCount = service.characteristicCount();
+  if (cIndex < 0 || cIndex >= charCount) {
+    Serial.println("Invalid characteristic index.");
+    return false;
+  }
+  BLECharacteristic characteristic = service.characteristic(cIndex);
+  if (characteristic.canSubscribe()) {
+    if (characteristic.unsubscribe()) {
+      Serial.print("Unsubscribed from characteristic ");
+      Serial.println(characteristic.uuid());
+      return true;
+    } else {
+      Serial.println("Unsubscribe failed.");
+      return false;
+    }
+  } else {
+    Serial.println("Characteristic does not support notifications.");
+    return false;
+  }
+}
+
 bool BLEManager::readCharacteristic(int sIndex, int cIndex) {
   if (!selectedDevice) {
     Serial.println("No device connected.");
@@ -194,7 +228,7 @@ bool BLEManager::readCharacteristic(int sIndex, int cIndex) {
   }
 }
 
-bool BLEManager::writeCharacteristic(int sIndex, int cIndex, const uint8_t data, int length) {
+bool BLEManager::writeCharacteristic(int sIndex, int cIndex, const uint8_t *data, int length) {
   if (!selectedDevice) {
     Serial.println("No device connected.");
     return false;
@@ -216,8 +250,13 @@ bool BLEManager::writeCharacteristic(int sIndex, int cIndex, const uint8_t data,
   }
   BLECharacteristic characteristic = service.characteristic(cIndex);
   if (characteristic.canWrite()) {
-    if (characteristic.writeValue(&data, length)) {
-      Serial.print("Wrote data to ");
+    if (characteristic.writeValue(data, length)) {
+      Serial.print("Wrote ");
+      for (int i = 0; i < length; i++) {
+        Serial.print(data[i], HEX);
+        Serial.print(" ");
+      }
+      Serial.print("to characteristic ");
       Serial.print(characteristic.uuid());
       Serial.println(".");
       return true;
@@ -251,7 +290,7 @@ bool BLEManager::sendMovesenseCommand(int sIndex) {
   for (int i = 0; i < charCount; i++) {
     BLECharacteristic characteristic = service.characteristic(i);
     if (characteristic.canWrite()) {
-      const uint8_t subscribeCommand[] = {1, 99, '/', 'M', 'e', 'a', 's', '/', 'I', 'M', 'U', '9', '/', '1', '0', '4' };
+      const uint8_t subscribeCommand[] = {1, 99, '/', 'M', 'e', 'a', 's', '/', 'I', 'M', 'U', '9', '/', '1', '0', '4'};
       if (characteristic.writeValue(subscribeCommand, sizeof(subscribeCommand))) {
         Serial.println("Command sent successfully.");
         return true;
@@ -270,7 +309,7 @@ void BLEManager::disconnect() {
   if (selectedDevice) {
     selectedDevice.disconnect();
     Serial.println("Disconnected.");
-    selectedDevice = BLEDevice(); // Clear selection
+    selectedDevice = BLEDevice();
   } else {
     Serial.println("No device is currently connected.");
   }
@@ -278,7 +317,7 @@ void BLEManager::disconnect() {
 
 void BLEManager::notificationCallback(BLEDevice device, BLECharacteristic characteristic) {
   int length = characteristic.valueLength();
-  if (length < 6) return;  // Safety check
+  if (length < 2) return; // Minimum length for Movesense packets
 
   const uint8_t* data = characteristic.value();
   uint8_t packet_type = data[0];
@@ -286,54 +325,57 @@ void BLEManager::notificationCallback(BLEDevice device, BLECharacteristic charac
   static uint8_t ongoing_data[256]; // Buffer for ongoing data
   static int ongoing_data_length = 0;
 
-  if (packet_type == 2) {
-    // PACKET_TYPE_DATA — store the first part
-    memcpy(ongoing_data, data, length);
-    ongoing_data_length = length;
+  if (packet_type == DATA) {
+    // First part of the data
+    memcpy(ongoing_data, data + 2, length - 2); // Skip packet type and reference
+    ongoing_data_length = length - 2;
     return;
   }
 
-  if (packet_type == 3) {
-    // PACKET_TYPE_DATA_PART2 — combine with the first part
+  if (packet_type == DATA_PART2 || packet_type == DATA_PART3) {
+    // Append subsequent parts
     memcpy(ongoing_data + ongoing_data_length, data + 2, length - 2);
     ongoing_data_length += length - 2;
 
-    // Parse the combined data
-    const uint8_t* combined_data = ongoing_data;
-    uint32_t timestamp;
-    memcpy(&timestamp, &combined_data[2], sizeof(uint32_t));
+    if (packet_type == DATA_PART3) {
+      // Final part, process the combined data
+      const uint8_t* combined_data = ongoing_data;
+      uint32_t timestamp;
+      memcpy(&timestamp, &combined_data[0], sizeof(uint32_t));
 
-    const uint8_t* sensor_data = &combined_data[6]; // Start after timestamp
-    const int row_count = 8;
-    const int row_stride = 3 * sizeof(float);
-    const int block_stride = row_count * row_stride;
+      const uint8_t* sensor_data = &combined_data[4]; // Start after timestamp
+      const int row_count = 8;
+      const int row_stride = 3 * sizeof(float);
+      const int block_stride = row_count * row_stride;
 
-    for (int i = 0; i < row_count; ++i) {
-      uint32_t row_timestamp = timestamp + int(i * 1000 / 104);
+      for (int i = 0; i < row_count; ++i) {
+        uint32_t row_timestamp = timestamp + int(i * 1000 / 104);
 
-      IMUData imu;
-      imu.timestamp = row_timestamp;
+        IMUData imu;
+        imu.timestamp = row_timestamp;
 
-      // Acc: 0..block_stride
-      memcpy(&imu.accX,  &sensor_data[i * row_stride + 0], sizeof(float));
-      memcpy(&imu.accY,  &sensor_data[i * row_stride + 4], sizeof(float));
-      memcpy(&imu.accZ,  &sensor_data[i * row_stride + 8], sizeof(float));
+        // Acc: 0..block_stride
+        memcpy(&imu.accX,  &sensor_data[i * row_stride + 0], sizeof(float));
+        memcpy(&imu.accY,  &sensor_data[i * row_stride + 4], sizeof(float));
+        memcpy(&imu.accZ,  &sensor_data[i * row_stride + 8], sizeof(float));
 
-      // Gyro: offset by one block
-      memcpy(&imu.gyroX, &sensor_data[block_stride + i * row_stride + 0], sizeof(float));
-      memcpy(&imu.gyroY, &sensor_data[block_stride + i * row_stride + 4], sizeof(float));
-      memcpy(&imu.gyroZ, &sensor_data[block_stride + i * row_stride + 8], sizeof(float));
+        // Gyro: offset by one block
+        memcpy(&imu.gyroX, &sensor_data[block_stride + i * row_stride + 0], sizeof(float));
+        memcpy(&imu.gyroY, &sensor_data[block_stride + i * row_stride + 4], sizeof(float));
+        memcpy(&imu.gyroZ, &sensor_data[block_stride + i * row_stride + 8], sizeof(float));
 
-      // Mag: offset by two blocks
-      memcpy(&imu.magX,  &sensor_data[2 * block_stride + i * row_stride + 0], sizeof(float));
-      memcpy(&imu.magY,  &sensor_data[2 * block_stride + i * row_stride + 4], sizeof(float));
-      memcpy(&imu.magZ,  &sensor_data[2 * block_stride + i * row_stride + 8], sizeof(float));
+        // Mag: offset by two blocks
+        memcpy(&imu.magX,  &sensor_data[2 * block_stride + i * row_stride + 0], sizeof(float));
+        memcpy(&imu.magY,  &sensor_data[2 * block_stride + i * row_stride + 4], sizeof(float));
+        memcpy(&imu.magZ,  &sensor_data[2 * block_stride + i * row_stride + 8], sizeof(float));
 
-      // Debug log
-      Serial.println(imu.toString());
+        // Use the singleton IMUProcessor instance
+        IMUProcessor::getInstance().processIMUData(imu);
+      }
+
+      // Reset buffer
+      ongoing_data_length = 0;
     }
-
-    // Reset buffer
-    ongoing_data_length = 0;
   }
 }
+

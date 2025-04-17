@@ -4,12 +4,17 @@
 #include <ArduinoBLE.h>
 #include "IMUProcessor.h"
 
+#define SCAN_TIME 5000 // Scan duration in milliseconds
+#define MAX_DEVICES 100 // Maximum number of devices to scan
+#define MIN_RSSI -70  // Minimum RSSI value to consider a device
+
+#define DATA 0x01
+#define DATA_PART2 0x02
+#define DATA_PART3 0x03
+
 class BLEManager {
 public:
-  static BLEManager& getInstance() {
-    static BLEManager instance;
-    return instance;
-  }
+  BLEManager(): deviceCount(0) {};
 
   void scanDevices();
   void listDevices();
@@ -23,17 +28,14 @@ public:
   void disconnect();
 
 private:
-  BLEManager();
-  BLEManager(const BLEManager&) = delete;
-  BLEManager& operator=(const BLEManager&) = delete;
+  bool deviceAlreadyListed(BLEDevice device);
 
   static void notificationCallback(BLEDevice device, BLECharacteristic characteristic);
 
-  IMUProcessor& imuProcessor;
   BLEDevice selectedDevice;
   BLECharacteristic selectedCharacteristic;
   BLEDevice scannedDevices[10];
-  int deviceCount = 0;
+  int deviceCount;
 };
 
 #endif

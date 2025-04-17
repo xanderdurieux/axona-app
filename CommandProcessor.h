@@ -10,13 +10,13 @@ struct Command {
   const char* name;
   const char* description;
   const char* usage;
-  bool (CommandProcessor::*handler)(int argc, char** argv) ;
+  bool (CommandProcessor::*handler)(int argc, char** argv);
 };
 
 class CommandProcessor {
 public:
-  static CommandProcessor& getInstance() {
-    static CommandProcessor instance;
+  static CommandProcessor& getInstance(BLEManager* bleManager = nullptr) {
+    static CommandProcessor instance(bleManager);
     return instance;
   }
 
@@ -24,9 +24,11 @@ public:
   void printHelp();
 
 private:
-  CommandProcessor();
+  CommandProcessor(BLEManager* bleManager);
   CommandProcessor(const CommandProcessor&) = delete;
   CommandProcessor& operator=(const CommandProcessor&) = delete;
+
+  BLEManager* bleManager;
 
   static const Command COMMANDS[];
   static const int COMMAND_COUNT;

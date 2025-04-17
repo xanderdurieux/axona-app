@@ -101,24 +101,24 @@ bool CommandProcessor::helpHandler(int argc, char** argv) {
 }
 
 bool CommandProcessor::scanHandler(int argc, char** argv) {
-  bleManager.scanDevices();
+  bleManager->scanDevices();
   return true;
 }
 
 bool CommandProcessor::listHandler(int argc, char** argv) {
-  bleManager.listDevices();
+  bleManager->listDevices();
   return true;
 }
 
 bool CommandProcessor::selectHandler(int argc, char** argv) {
   if (argc != 1) return false;
   int index = atoi(argv[0]);
-  bleManager.selectDevice(index);
+  bleManager->selectDevice(index);
   return true;
 }
 
 bool CommandProcessor::servicesHandler(int argc, char** argv) {
-  bleManager.listServicesAndCharacteristics();
+  bleManager->listServicesAndCharacteristics();
   return true;
 }
 
@@ -126,7 +126,7 @@ bool CommandProcessor::subscribeHandler(int argc, char** argv) {
   if (argc != 2) return false;
   int sIndex = atoi(argv[0]);
   int cIndex = atoi(argv[1]);
-  bleManager.subscribeCharacteristic(sIndex, cIndex);
+  bleManager->subscribeCharacteristic(sIndex, cIndex);
   return true;
 }
 
@@ -134,7 +134,7 @@ bool CommandProcessor::unsubscribeHandler(int argc, char** argv) {
   if (argc != 2) return false;
   int sIndex = atoi(argv[0]);
   int cIndex = atoi(argv[1]);
-  bleManager.unsubscribeCharacteristic(sIndex, cIndex);
+  bleManager->unsubscribeCharacteristic(sIndex, cIndex);
   return true;
 }
 
@@ -142,7 +142,7 @@ bool CommandProcessor::readHandler(int argc, char** argv) {
   if (argc != 2) return false;
   int sIndex = atoi(argv[0]);
   int cIndex = atoi(argv[1]);
-  bleManager.readCharacteristic(sIndex, cIndex);
+  bleManager->readCharacteristic(sIndex, cIndex);
   return true;
 }
 
@@ -157,13 +157,13 @@ bool CommandProcessor::writeHandler(int argc, char** argv) {
     data[i - 2] = static_cast<uint8_t>(atoi(argv[i]));
   }
   
-  bleManager.writeCharacteristic(sIndex, cIndex, data, sizeof(data));
+  bleManager->writeCharacteristic(sIndex, cIndex, data, sizeof(data));
   
   return true;
 }
 
 bool CommandProcessor::disconnectHandler(int argc, char** argv) {
-  bleManager.disconnect();
+  bleManager->disconnect();
   return true;
 }
 
@@ -178,20 +178,20 @@ bool CommandProcessor::movesenseHandler(int argc, char** argv) {
   
   if (subcommand == "hello") {
     const uint8_t helloMessage[] = {0, 123};
-    bleManager.subscribeCharacteristic(serviceIndex, notifyCharIndex);
-    bleManager.writeCharacteristic(serviceIndex, writeCharIndex, helloMessage, sizeof(helloMessage));
+    bleManager->subscribeCharacteristic(serviceIndex, notifyCharIndex);
+    bleManager->writeCharacteristic(serviceIndex, writeCharIndex, helloMessage, sizeof(helloMessage));
     Serial.println("Sent hello command to Movesense");
   }
   else if (subcommand == "subscribe") {
     const uint8_t subscribeCommand[] = {1, 99, '/', 'M', 'e', 'a', 's', '/', 'I', 'M', 'U', '9', '/', '1', '0', '4'};
-    bleManager.writeCharacteristic(serviceIndex, writeCharIndex, subscribeCommand, sizeof(subscribeCommand));
-    bleManager.subscribeCharacteristic(serviceIndex, notifyCharIndex);
+    bleManager->writeCharacteristic(serviceIndex, writeCharIndex, subscribeCommand, sizeof(subscribeCommand));
+    bleManager->subscribeCharacteristic(serviceIndex, notifyCharIndex);
     Serial.println("Subscribed to IMU sensor at 52Hz");
   }
   else if (subcommand == "unsubscribe") {
     const uint8_t unsubscribeCommand[] = {2, 99};
-    bleManager.writeCharacteristic(serviceIndex, writeCharIndex, unsubscribeCommand, sizeof(unsubscribeCommand));
-    bleManager.unsubscribeCharacteristic(serviceIndex, notifyCharIndex);
+    bleManager->writeCharacteristic(serviceIndex, writeCharIndex, unsubscribeCommand, sizeof(unsubscribeCommand));
+    bleManager->unsubscribeCharacteristic(serviceIndex, notifyCharIndex);
     Serial.println("Unsubscribed from IMU sensor");
   }
   else {
