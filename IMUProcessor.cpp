@@ -1,5 +1,8 @@
-#include "IMUProcessor.h"
+#include "IMUProcessor.hpp"
 
+IMUProcessor::IMUProcessor() {
+  resetBuffer();
+}
 
 void IMUProcessor::processIMUData(const IMUData& imu) {
   downsampleAndStore(imu);

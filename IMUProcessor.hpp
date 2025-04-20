@@ -3,7 +3,7 @@
 
 #include <Arduino.h>
 #include <math.h>
-#include "IMUData.h"
+#include "IMUData.hpp"
 
 #define IMPACT_THRESHOLD 5.0
 

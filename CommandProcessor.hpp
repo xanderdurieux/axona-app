@@ -2,7 +2,8 @@
 #define COMMAND_PROCESSOR_H
 
 #include <Arduino.h>
-#include "BLEManager.h"
+#include <string.h>
+#include "BLEManager.hpp"
 
 class CommandProcessor;
 

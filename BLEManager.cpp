@@ -1,5 +1,4 @@
 #include "BLEManager.h"
-#include "IMUProcessor.h"
 
 bool BLEManager::deviceAlreadyListed(BLEDevice device) {
   for (int i = 0; i < deviceCount; i++) {

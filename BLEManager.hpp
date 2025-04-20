@@ -2,7 +2,7 @@
 #define BLE_MANAGER_H
 
 #include <ArduinoBLE.h>
-#include "IMUProcessor.h"
+#include "IMUProcessor.hpp"
 
 #define SCAN_TIME 5000 // Scan duration in milliseconds
 #define MAX_DEVICES 100 // Maximum number of devices to scan

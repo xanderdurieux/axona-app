@@ -1,37 +1,22 @@
-#include "CommandProcessor.h"
-#include <string.h>
+#include "CommandProcessor.hpp"
+
+CommandProcessor::CommandProcessor(BLEManager* bleManager) : bleManager(bleManager) {}
 
 const Command CommandProcessor::COMMANDS[] = {
-  {"help", "Show available commands and their usage", "help", 
-    &CommandProcessor::helpHandler},
-  {"scan", "Scan for nearby BLE devices", "scan", 
-    &CommandProcessor::scanHandler},
-  {"list", "List all previously scanned devices", "list", 
-    &CommandProcessor::listHandler},
-  {"select", "Connect to a device by its index", "select <device index>", 
-    &CommandProcessor::selectHandler},
-  {"services", "List all services and characteristics of connected device", "services", 
-    &CommandProcessor::servicesHandler},
-  {"subscribe", "Subscribe to notifications from a characteristic", 
-    "subscribe <service index> <characteristic index>", 
-    &CommandProcessor::subscribeHandler},
-  {"unsubscribe", "Unsubscribe from notifications of a characteristic", 
-    "unsubscribe <service index> <characteristic index>", 
-    &CommandProcessor::unsubscribeHandler},
-  {"read", "Read value from a characteristic", 
-    "read <service index> <characteristic index>", 
-    &CommandProcessor::readHandler},
-  {"write", "Write data to a characteristic", 
-    "write <service index> <characteristic index> <data>", 
-    &CommandProcessor::writeHandler},
-  {"disconnect", "Disconnect from the current device", "disconnect", 
-    &CommandProcessor::disconnectHandler},
-  {"movesense", "Interact with Movesense device", 
-    "movesense <command>\n    Commands: hello, subscribe, unsubscribe", 
-    &CommandProcessor::movesenseHandler}
+  {"help", "Show available commands", "help", &CommandProcessor::helpHandler},
+  {"scan", "Scan for BLE devices", "scan", &CommandProcessor::scanHandler},
+  {"list", "List scanned devices", "list", &CommandProcessor::listHandler},
+  {"select", "Select a device to connect", "select <device index>", &CommandProcessor::selectHandler},
+  {"services", "List services and characteristics", "services", &CommandProcessor::servicesHandler},
+  {"subscribe", "Subscribe to a characteristic", "subscribe <service index> <characteristic index>", &CommandProcessor::subscribeHandler},
+  {"unsubscribe", "Unsubscribe from a characteristic", "unsubscribe <service index> <characteristic index>", &CommandProcessor::unsubscribeHandler},
+  {"read", "Read from a characteristic", "read <service index> <characteristic index>", &CommandProcessor::readHandler},
+  {"write", "Write to a characteristic", "write <service index> <characteristic index> <hex data>", &CommandProcessor::writeHandler},
+  {"disconnect", "Disconnect from the device", "disconnect", &CommandProcessor::disconnectHandler},
+  {"movesense", "Send Movesense command", "movesense <service index>", &CommandProcessor::movesenseHandler}
 };
 
-const int CommandProcessor::COMMAND_COUNT = sizeof(COMMANDS) / sizeof(Command);
+const int CommandProcessor::COMMAND_COUNT = sizeof(COMMANDS) / sizeof(COMMANDS[0]);
 
 void CommandProcessor::processInput() {
   if (Serial.available() > 0) {
