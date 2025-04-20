@@ -13,7 +13,8 @@ const Command CommandProcessor::COMMANDS[] = {
   {"read", "Read from a characteristic", "read <service index> <characteristic index>", &CommandProcessor::readHandler},
   {"write", "Write to a characteristic", "write <service index> <characteristic index> <hex data>", &CommandProcessor::writeHandler},
   {"disconnect", "Disconnect from the device", "disconnect", &CommandProcessor::disconnectHandler},
-  {"movesense", "Send Movesense command", "movesense <service index>", &CommandProcessor::movesenseHandler}
+  {"movesense", "Send Movesense command", "movesense <service index>", &CommandProcessor::movesenseHandler},
+  {"auto", "Automatically connect and subscribe to Movesense", "auto <device index>", &CommandProcessor::autoHandler}
 };
 
 const int CommandProcessor::COMMAND_COUNT = sizeof(COMMANDS) / sizeof(COMMANDS[0]);
@@ -168,10 +169,10 @@ bool CommandProcessor::movesenseHandler(int argc, char** argv) {
     Serial.println("Sent hello command to Movesense");
   }
   else if (subcommand == "subscribe") {
-    const uint8_t subscribeCommand[] = {1, 99, '/', 'M', 'e', 'a', 's', '/', 'I', 'M', 'U', '9', '/', '1', '0', '4'};
+    const uint8_t subscribeCommand[] = {1, 99, '/', 'M', 'e', 'a', 's', '/', 'I', 'M', 'U', '9', '/', '1', '3'};
     bleManager->writeCharacteristic(serviceIndex, writeCharIndex, subscribeCommand, sizeof(subscribeCommand));
     bleManager->subscribeCharacteristic(serviceIndex, notifyCharIndex);
-    Serial.println("Subscribed to IMU sensor at 104Hz");
+    Serial.println("Subscribed to IMU sensor");
   }
   else if (subcommand == "unsubscribe") {
     const uint8_t unsubscribeCommand[] = {2, 99};
@@ -185,6 +186,49 @@ bool CommandProcessor::movesenseHandler(int argc, char** argv) {
     return false;
   }
 
+}
+
+bool CommandProcessor::autoHandler(int argc, char** argv) {
+  // Execute "scan"
+  if (!scanHandler(0, nullptr)) {
+    Serial.println("Failed to scan for devices.");
+    return false;
+  }
+
+  // Find and select the device with the specific address
+  const char* targetAddress = "74:92:ba:10:e8:23";
+  int targetIndex = bleManager->getDeviceIndex(targetAddress);
+  if (targetIndex == -1) {
+    Serial.println("Target device not found.");
+    return false;
+
+  }
+
+  char targetIndexStr[4];
+  snprintf(targetIndexStr, sizeof(targetIndexStr), "%d", targetIndex);
+  const char* selectArgs[] = {targetIndexStr};
+
+  // Execute "select <device_index>"
+  if (!selectHandler(1, const_cast<char**>(selectArgs))) {
+    Serial.println("Failed to select device.");
+    return false;
+  }
+
+  // Execute "services"
+  if (!servicesHandler(0, nullptr)) {
+    Serial.println("Failed to list services.");
+    return false;
+  }
+
+  // Execute "movesense subscribe"
+  const char* movesenseArgs[] = {"subscribe"};
+  if (!movesenseHandler(1, const_cast<char**>(movesenseArgs))) {
+    Serial.println("Failed to subscribe to Movesense.");
+    return false;
+  }
+
+  Serial.println("Auto command executed successfully.");
+  return true;
 }
 
 void CommandProcessor::printHelp() {

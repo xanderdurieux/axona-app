@@ -45,6 +45,7 @@ private:
   bool writeHandler(int argc, char** argv);
   bool disconnectHandler(int argc, char** argv);
   bool movesenseHandler(int argc, char** argv);
+  bool autoHandler(int argc, char** argv);
 
   // Helper methods
   char** tokenizeInput(String input, int& argc);

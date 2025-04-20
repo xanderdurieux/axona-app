@@ -2,11 +2,15 @@
 #define BLE_MANAGER_H
 
 #include <ArduinoBLE.h>
-#include "IMUProcessor.hpp"
+#include "IMUData.hpp"
 
-#define SCAN_TIME 5000 // Scan duration in milliseconds
-#define MAX_DEVICES 100 // Maximum number of devices to scan
-#define MIN_RSSI -70  // Minimum RSSI value to consider a device
+#define MAX_DEVICES 10
+#define MIN_RSSI -80
+#define SCAN_TIME 5000
+
+#define DATA 0x01
+#define DATA_PART2 0x02
+#define DATA_PART3 0x03
 
 class BLEManager {
 public:
@@ -20,8 +24,9 @@ public:
   bool unsubscribeCharacteristic(int sIndex, int cIndex);
   bool readCharacteristic(int sIndex, int cIndex);
   bool writeCharacteristic(int sIndex, int cIndex, const uint8_t *data, int length);
-  bool sendMovesenseCommand(int sIndex);
   void disconnect();
+    
+  int getDeviceIndex(String address);
 
 private:
   bool deviceAlreadyListed(BLEDevice device);
@@ -32,6 +37,8 @@ private:
   BLECharacteristic selectedCharacteristic;
   BLEDevice scannedDevices[10];
   int deviceCount;
+
+  bool isSubscribed = false;
 };
 
 #endif

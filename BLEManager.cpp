@@ -1,4 +1,4 @@
-#include "BLEManager.h"
+#include "BLEManager.hpp"
 
 bool BLEManager::deviceAlreadyListed(BLEDevice device) {
   for (int i = 0; i < deviceCount; i++) {
@@ -24,6 +24,15 @@ void BLEManager::scanDevices() {
   }
   BLE.stopScan();
   Serial.println("Scan complete.\n");
+}
+
+int BLEManager::getDeviceIndex(String address) {
+  for (int i = 0; i < deviceCount; i++) {
+    if (scannedDevices[i].address() == address) {
+      return i;
+    }
+  }
+  return -1;
 }
 
 void BLEManager::listDevices() {
@@ -136,6 +145,7 @@ bool BLEManager::subscribeCharacteristic(int sIndex, int cIndex) {
       selectedCharacteristic.setEventHandler(BLEUpdated, notificationCallback);
       Serial.print("Subscribed to characteristic ");
       Serial.println(selectedCharacteristic.uuid());
+      isSubscribed = true;
       return true;
     } else {
       Serial.println("Subscription failed.");
@@ -172,6 +182,7 @@ bool BLEManager::unsubscribeCharacteristic(int sIndex, int cIndex) {
     if (characteristic.unsubscribe()) {
       Serial.print("Unsubscribed from characteristic ");
       Serial.println(characteristic.uuid());
+      isSubscribed = false;
       return true;
     } else {
       Serial.println("Unsubscribe failed.");
@@ -280,65 +291,104 @@ void BLEManager::disconnect() {
 }
 
 void BLEManager::notificationCallback(BLEDevice device, BLECharacteristic characteristic) {
+  static int sampleCounter = 0;
+  static float startTime = millis();
+  static float sampleRate = 0;
+
+  Serial.print(sampleCounter);
+  Serial.print(" | Sample rate: ");
+  Serial.print(10.0 / ((sampleRate) / 1000.0));
+  Serial.println(" Hz");
+
+  sampleCounter++;
+  if (sampleCounter % 10 == 0) {
+    sampleRate = millis() - startTime;
+    startTime = millis();
+  }
+
+  static uint8_t* ongoingDataBuffer = nullptr;
+  static size_t ongoingDataLength = 0;
+
   int length = characteristic.valueLength();
-  if (length < 2) return; // Minimum length for Movesense packets
+  if (length < 2) return;
 
   const uint8_t* data = characteristic.value();
   uint8_t packet_type = data[0];
-
-  static uint8_t ongoing_data[256]; // Buffer for ongoing data
-  static int ongoing_data_length = 0;
+  uint8_t reference = data[1];
 
   if (packet_type == DATA) {
-    // First part of the data
-    memcpy(ongoing_data, data + 2, length - 2); // Skip packet type and reference
-    ongoing_data_length = length - 2;
-    return;
-  }
-
-  if (packet_type == DATA_PART2 || packet_type == DATA_PART3) {
-    // Append subsequent parts
-    memcpy(ongoing_data + ongoing_data_length, data + 2, length - 2);
-    ongoing_data_length += length - 2;
-
-    if (packet_type == DATA_PART3) {
-      // Final part, process the combined data
-      const uint8_t* combined_data = ongoing_data;
+    Serial.println("DATA PART 1");
+    // Store the first part of incoming data
+    if (ongoingDataBuffer != nullptr) {
+      free(ongoingDataBuffer);
+    }
+    
+    ongoingDataBuffer = (uint8_t*)malloc(length);
+    if (ongoingDataBuffer) {
+      memcpy(ongoingDataBuffer, data, length);
+      ongoingDataLength = length;
+    }
+  } 
+  else if (packet_type == DATA_PART2 && ongoingDataBuffer != nullptr) {
+    Serial.println("DATA PART 2");
+    // Create combined data buffer (skip packet type and reference from part2)
+    size_t combinedLength = ongoingDataLength + length - 2;
+    uint8_t* combinedData = (uint8_t*)malloc(combinedLength);
+    
+    if (combinedData) {
+      memcpy(combinedData, ongoingDataBuffer, ongoingDataLength);
+      memcpy(combinedData + ongoingDataLength, data + 2, length - 2);
+      
+      // Process the combined data
       uint32_t timestamp;
-      memcpy(&timestamp, &combined_data[0], sizeof(uint32_t));
+      memcpy(&timestamp, &combinedData[2], sizeof(uint32_t));
 
-      const uint8_t* sensor_data = &combined_data[4]; // Start after timestamp
+      const uint8_t* sensor_data = &combinedData[6]; // Start after packet type, reference and timestamp
       const int row_count = 8;
       const int row_stride = 3 * sizeof(float);
       const int block_stride = row_count * row_stride;
 
       for (int i = 0; i < row_count; ++i) {
         uint32_t row_timestamp = timestamp + int(i * 1000 / 104);
+        
+        // Directly extract values without using IMUData
+        float accX, accY, accZ;
+        float gyroX, gyroY, gyroZ;
+        float magX, magY, magZ;
+        
+        int offset = i * row_stride;
+        int skip = block_stride;
+        
+        // Accelerometer data
+        memcpy(&accX, &sensor_data[offset], sizeof(float));
+        memcpy(&accY, &sensor_data[offset + 4], sizeof(float));
+        memcpy(&accZ, &sensor_data[offset + 8], sizeof(float));
+        
+        // Gyroscope data
+        memcpy(&gyroX, &sensor_data[offset + skip], sizeof(float));
+        memcpy(&gyroY, &sensor_data[offset + skip + 4], sizeof(float));
+        memcpy(&gyroZ, &sensor_data[offset + skip + 8], sizeof(float));
+        
+        // Magnetometer data
+        memcpy(&magX, &sensor_data[offset + 2 * skip], sizeof(float));
+        memcpy(&magY, &sensor_data[offset + 2 * skip + 4], sizeof(float));
+        memcpy(&magZ, &sensor_data[offset + 2 * skip + 8], sizeof(float));
 
-        IMUData imu;
-        imu.timestamp = row_timestamp;
-
-        // Acc: 0..block_stride
-        memcpy(&imu.accX,  &sensor_data[i * row_stride + 0], sizeof(float));
-        memcpy(&imu.accY,  &sensor_data[i * row_stride + 4], sizeof(float));
-        memcpy(&imu.accZ,  &sensor_data[i * row_stride + 8], sizeof(float));
-
-        // Gyro: offset by one block
-        memcpy(&imu.gyroX, &sensor_data[block_stride + i * row_stride + 0], sizeof(float));
-        memcpy(&imu.gyroY, &sensor_data[block_stride + i * row_stride + 4], sizeof(float));
-        memcpy(&imu.gyroZ, &sensor_data[block_stride + i * row_stride + 8], sizeof(float));
-
-        // Mag: offset by two blocks
-        memcpy(&imu.magX,  &sensor_data[2 * block_stride + i * row_stride + 0], sizeof(float));
-        memcpy(&imu.magY,  &sensor_data[2 * block_stride + i * row_stride + 4], sizeof(float));
-        memcpy(&imu.magZ,  &sensor_data[2 * block_stride + i * row_stride + 8], sizeof(float));
-
-        // Use the singleton IMUProcessor instance
-        IMUProcessor::getInstance().processIMUData(imu);
+        // Format and print the IMU data directly
+        char buffer[128];
+        sprintf(buffer, "IMU9,%lu,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f",
+                row_timestamp,
+                accX, accY, accZ,
+                gyroX, gyroY, gyroZ,
+                magX, magY, magZ);
+        Serial.println(buffer);
       }
-
-      // Reset buffer
-      ongoing_data_length = 0;
+      
+      free(combinedData);
     }
+    
+    // Clean up
+    free(ongoingDataBuffer);
+    ongoingDataBuffer = nullptr;
   }
 }
