@@ -186,7 +186,7 @@ bool CommandProcessor::movesenseHandler(int argc, char** argv) {
     const uint8_t subscribeCommand[] = {1, 99, '/', 'M', 'e', 'a', 's', '/', 'I', 'M', 'U', '9', '/', '1', '0', '4'};
     bleManager->writeCharacteristic(serviceIndex, writeCharIndex, subscribeCommand, sizeof(subscribeCommand));
     bleManager->subscribeCharacteristic(serviceIndex, notifyCharIndex);
-    Serial.println("Subscribed to IMU sensor at 52Hz");
+    Serial.println("Subscribed to IMU sensor at 104Hz");
   }
   else if (subcommand == "unsubscribe") {
     const uint8_t unsubscribeCommand[] = {2, 99};

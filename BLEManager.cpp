@@ -270,41 +270,6 @@ bool BLEManager::writeCharacteristic(int sIndex, int cIndex, const uint8_t *data
   }
 }
 
-bool BLEManager::sendMovesenseCommand(int sIndex) {
-  if (!selectedDevice) {
-    Serial.println("No device connected.");
-    return false;
-  }
-  if (!selectedDevice.discoverAttributes()) {
-    Serial.println("Service discovery failed.");
-    return false;
-  }
-  int svcCount = selectedDevice.serviceCount();
-  if (sIndex < 0 || sIndex >= svcCount) {
-    Serial.println("Invalid service index.");
-    return false;
-  }
-
-  BLEService service = selectedDevice.service(sIndex);
-  int charCount = service.characteristicCount();
-  for (int i = 0; i < charCount; i++) {
-    BLECharacteristic characteristic = service.characteristic(i);
-    if (characteristic.canWrite()) {
-      const uint8_t subscribeCommand[] = {1, 99, '/', 'M', 'e', 'a', 's', '/', 'I', 'M', 'U', '9', '/', '1', '0', '4'};
-      if (characteristic.writeValue(subscribeCommand, sizeof(subscribeCommand))) {
-        Serial.println("Command sent successfully.");
-        return true;
-      } else {
-        Serial.println("Failed to write command.");
-        return false;
-      }
-    }
-  }
-
-  Serial.println("No writable characteristic found for command.");
-  return false;
-}
-
 void BLEManager::disconnect() {
   if (selectedDevice) {
     selectedDevice.disconnect();
@@ -378,4 +343,3 @@ void BLEManager::notificationCallback(BLEDevice device, BLECharacteristic charac
     }
   }
 }
-

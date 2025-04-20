@@ -7,6 +7,10 @@
 
 #define IMPACT_THRESHOLD 5.0
 
+#define DATA 0x01
+#define DATA_PART2 0x02
+#define DATA_PART3 0x03
+
 class IMUProcessor {
 public:
   static IMUProcessor& getInstance() {

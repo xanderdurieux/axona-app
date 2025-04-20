@@ -8,10 +8,6 @@
 #define MAX_DEVICES 100 // Maximum number of devices to scan
 #define MIN_RSSI -70  // Minimum RSSI value to consider a device
 
-#define DATA 0x01
-#define DATA_PART2 0x02
-#define DATA_PART3 0x03
-
 class BLEManager {
 public:
   BLEManager(): deviceCount(0) {};
