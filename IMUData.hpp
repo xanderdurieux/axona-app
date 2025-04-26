@@ -1,18 +1,31 @@
-#ifndef IMUDATA_H
-#define IMUDATA_H
+#ifndef IMU_DATA_H
+#define IMU_DATA_H
 
 #include <Arduino.h>
+#include <cstdint>
+#include <cstring>
 
 struct IMUData {
   uint32_t timestamp;
-  float accX, accY, accZ;
-  float gyroX, gyroY, gyroZ;
-  float magX, magY, magZ;
+  
+  // Accelerometer (m/s²)
+  float accX;
+  float accY;
+  float accZ;
+  
+  // Gyroscope (rad/s)
+  float gyroX;
+  float gyroY;
+  float gyroZ;
 
   String toString() const {
-    return String(timestamp) + " - ACC: x=" + String(accX, 2) + " y=" + String(accY, 2) + " z=" + String(accZ, 2) +
-         " - GYRO: x=" + String(gyroX, 2) + " y=" + String(gyroY, 2) + " z=" + String(gyroZ, 2) +
-         " - MAG: x=" + String(magX, 2) + " y=" + String(magY, 2) + " z=" + String(magZ, 2);
+    String result = "AccX:" + String(accX) + " AccY:" + String(accY) + " AccZ:" + String(accZ) +
+                    " GyroX:" + String(gyroX) + " GyroY:" + String(gyroY) + " GyroZ:" + String(gyroZ);
+    return result;
+  }
+
+  float getAcceleration() const {
+    return sqrt(accX * accX + accY * accY + accZ * accZ);
   }
 };
 

@@ -1,15 +1,18 @@
-#ifndef IMUPROCESSOR_H
-#define IMUPROCESSOR_H
+#ifndef IMU_PROCESSOR_H
+#define IMU_PROCESSOR_H
 
-#include <Arduino.h>
-#include <math.h>
+#include <vector>
+#include <deque>
+#include <cmath>
+#include <iostream>
+#include <limits>
+
 #include "IMUData.hpp"
 
-#define IMPACT_THRESHOLD 5.0
-
-#define DATA 0x01
-#define DATA_PART2 0x02
-#define DATA_PART3 0x03
+#define IMPACT_THRESHOLD_LOW 2.0
+#define IMPACT_THRESHOLD_MEDIUM 4.0
+#define IMPACT_THRESHOLD_HIGH 6.0
+#define IMPACT_THRESHOLD_SEVERE 8.0
 
 class IMUProcessor {
 public:
@@ -18,18 +21,20 @@ public:
     return instance;
   }
 
-  void processIMUData(const IMUData& imu);
+  void processData(
+    float accX, float accY, float accZ, 
+    float gyroX, float gyroY, float gyroZ,
+    uint32_t timestamp
+  );
+  
+  int calculateImpactLevel() const;
 
 private:
   IMUProcessor();
   IMUProcessor(const IMUProcessor&) = delete;
   IMUProcessor& operator=(const IMUProcessor&) = delete;
 
-  float buffer[10][9]; // Buffer for downsampling (10 samples, 9 values per sample)
-  int bufferIndex;
-  float calculateImpact(const IMUData& imu);
-  void downsampleAndStore(const IMUData& imu);
-  void resetBuffer();
+  std::deque<IMUData> imuDataBuffer;
 };
 
 #endif
