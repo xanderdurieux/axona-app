@@ -291,104 +291,77 @@ void BLEManager::disconnect() {
 }
 
 void BLEManager::notificationCallback(BLEDevice device, BLECharacteristic characteristic) {
-  static int sampleCounter = 0;
-  static float startTime = millis();
-  static float sampleRate = 0;
-
-  Serial.print(sampleCounter);
-  Serial.print(" | Sample rate: ");
-  Serial.print(10.0 / ((sampleRate) / 1000.0));
-  Serial.println(" Hz");
-
-  sampleCounter++;
-  if (sampleCounter % 10 == 0) {
-    sampleRate = millis() - startTime;
-    startTime = millis();
-  }
-
-  static uint8_t* ongoingDataBuffer = nullptr;
-  static size_t ongoingDataLength = 0;
 
   int length = characteristic.valueLength();
-  if (length < 2) return;
-
   const uint8_t* data = characteristic.value();
-  uint8_t packet_type = data[0];
-  uint8_t reference = data[1];
 
-  if (packet_type == DATA) {
-    Serial.println("DATA PART 1");
-    // Store the first part of incoming data
-    if (ongoingDataBuffer != nullptr) {
-      free(ongoingDataBuffer);
-    }
+  if (length < 6) {
+    Serial.println("Data too short.");
+    return;
+  }
+  if (length > 150) {
+    Serial.println("Data length exceeds maximum limit.");
+    return;
+  }
+
+  DataView dv = DataView(data, length);
+
+  // Serial.print("Data length: ");
+  // Serial.print(length);
+  // Serial.print(" -> Raw Data: ");
+  // for (int i = 0; i < length; i++) {
+  //   Serial.print(dv.getUint8(i));
+  //   Serial.print(" ");
+  // }  
+  // Serial.println();
+
+  uint8_t packet_type = dv.getUint8(0);
+  uint16_t reference = dv.getUint8(1);
+  uint32_t timestamp = dv.getUint32(2);
+
+  // Debug output - comment out when using Serial Plotter
+  // Serial.print("Packet type: ");
+  // Serial.print(packet_type);
+  // Serial.print(" | Reference: ");
+  // Serial.print(reference);
+  // Serial.print(" | Timestamp: ");
+  // Serial.println(timestamp);
+
+  const int sensorDataSize = 12;
+  const int numRows = (length - 2) / (2 * sensorDataSize); 
+  const int sampleRate = numRows * 13;
+  
+  IMUProcessor& processor = IMUProcessor::getInstance();
+  static int sampleCount = 0;
+
+  for (int i = 0; i < numRows; ++i) {
+    uint32_t row_timestamp = timestamp + int(i * 1000 / sampleRate);
+
+    // Acceleration data
+    float accX = dv.getFloat32(6 + i * sensorDataSize);
+    float accY = dv.getFloat32(6 + i * sensorDataSize + 4);
+    float accZ = dv.getFloat32(6 + i * sensorDataSize + 8);
+
+    // Gyroscope data
+    float gyroX = dv.getFloat32(6 + numRows * sensorDataSize + i * sensorDataSize);
+    float gyroY = dv.getFloat32(6 + numRows * sensorDataSize + i * sensorDataSize + 4);
+    float gyroZ = dv.getFloat32(6 + numRows * sensorDataSize + i * sensorDataSize + 8);
+
+    // Process the IMU data
+    processor.processData(accX, accY, accZ, gyroX, gyroY, gyroZ, row_timestamp);
     
-    ongoingDataBuffer = (uint8_t*)malloc(length);
-    if (ongoingDataBuffer) {
-      memcpy(ongoingDataBuffer, data, length);
-      ongoingDataLength = length;
-    }
-  } 
-  else if (packet_type == DATA_PART2 && ongoingDataBuffer != nullptr) {
-    Serial.println("DATA PART 2");
-    // Create combined data buffer (skip packet type and reference from part2)
-    size_t combinedLength = ongoingDataLength + length - 2;
-    uint8_t* combinedData = (uint8_t*)malloc(combinedLength);
-    
-    if (combinedData) {
-      memcpy(combinedData, ongoingDataBuffer, ongoingDataLength);
-      memcpy(combinedData + ongoingDataLength, data + 2, length - 2);
-      
-      // Process the combined data
-      uint32_t timestamp;
-      memcpy(&timestamp, &combinedData[2], sizeof(uint32_t));
-
-      const uint8_t* sensor_data = &combinedData[6]; // Start after packet type, reference and timestamp
-      const int row_count = 8;
-      const int row_stride = 3 * sizeof(float);
-      const int block_stride = row_count * row_stride;
-
-      for (int i = 0; i < row_count; ++i) {
-        uint32_t row_timestamp = timestamp + int(i * 1000 / 104);
-        
-        // Directly extract values without using IMUData
-        float accX, accY, accZ;
-        float gyroX, gyroY, gyroZ;
-        float magX, magY, magZ;
-        
-        int offset = i * row_stride;
-        int skip = block_stride;
-        
-        // Accelerometer data
-        memcpy(&accX, &sensor_data[offset], sizeof(float));
-        memcpy(&accY, &sensor_data[offset + 4], sizeof(float));
-        memcpy(&accZ, &sensor_data[offset + 8], sizeof(float));
-        
-        // Gyroscope data
-        memcpy(&gyroX, &sensor_data[offset + skip], sizeof(float));
-        memcpy(&gyroY, &sensor_data[offset + skip + 4], sizeof(float));
-        memcpy(&gyroZ, &sensor_data[offset + skip + 8], sizeof(float));
-        
-        // Magnetometer data
-        memcpy(&magX, &sensor_data[offset + 2 * skip], sizeof(float));
-        memcpy(&magY, &sensor_data[offset + 2 * skip + 4], sizeof(float));
-        memcpy(&magZ, &sensor_data[offset + 2 * skip + 8], sizeof(float));
-
-        // Format and print the IMU data directly
-        char buffer[128];
-        sprintf(buffer, "IMU9,%lu,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f",
-                row_timestamp,
-                accX, accY, accZ,
-                gyroX, gyroY, gyroZ,
-                magX, magY, magZ);
-        Serial.println(buffer);
-      }
-      
-      free(combinedData);
-    }
-    
-    // Clean up
-    free(ongoingDataBuffer);
-    ongoingDataBuffer = nullptr;
+    // Output format for Serial Plotter
+    // Serial.print("AccX:");
+    // Serial.print(accX);
+    // Serial.print(" AccY:");
+    // Serial.print(accY);
+    // Serial.print(" AccZ:");
+    // Serial.print(accZ);
+    // Serial.print(" GyroX:");
+    // Serial.print(gyroX);
+    // Serial.print(" GyroY:");
+    // Serial.print(gyroY);
+    // Serial.print(" GyroZ:");
+    // Serial.println(gyroZ);
   }
 }
