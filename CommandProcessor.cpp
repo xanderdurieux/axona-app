@@ -169,7 +169,7 @@ bool CommandProcessor::movesenseHandler(int argc, char** argv) {
     Serial.println("Sent hello command to Movesense");
   }
   else if (subcommand == "subscribe") {
-    const uint8_t subscribeCommand[] = {1, 99, '/', 'M', 'e', 'a', 's', '/', 'I', 'M', 'U', '9', '/', '1', '3'};
+    const uint8_t subscribeCommand[] = {1, 99, '/', 'M', 'e', 'a', 's', '/', 'I', 'M', 'U', '6', '/', '5', '2'};
     bleManager->writeCharacteristic(serviceIndex, writeCharIndex, subscribeCommand, sizeof(subscribeCommand));
     bleManager->subscribeCharacteristic(serviceIndex, notifyCharIndex);
     Serial.println("Subscribed to IMU sensor");
