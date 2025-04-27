@@ -15,7 +15,7 @@ const CommandProcessor::Command CommandProcessor::COMMANDS[] = {
   {"write", "Write to a characteristic", "write <service index> <characteristic index> <hex data>", &CommandProcessor::writeHandler},
   {"disconnect", "Disconnect from the device", "disconnect", &CommandProcessor::disconnectHandler},
   {"movesense", "Send Movesense command", "movesense <service index>", &CommandProcessor::movesenseHandler},
-  {"auto", "Automatically connect and subscribe to Movesense", "auto <device index>", &CommandProcessor::autoHandler}
+  {"auto", "Automatically connect and subscribe to Movesense", "auto", &CommandProcessor::autoHandler}
 };
 
 const int CommandProcessor::COMMAND_COUNT = sizeof(COMMANDS) / sizeof(COMMANDS[0]);
@@ -183,6 +183,7 @@ bool CommandProcessor::movesenseHandler(int argc, char** argv) {
     Serial.println("Sent hello command to Movesense");
   }
   else if (subcommand == "subscribe") {
+    String sampleRate = argv[1];
     const uint8_t subscribeCommand[] = {1, 99, '/', 'M', 'e', 'a', 's', '/', 'I', 'M', 'U', '6', '/', '5', '2'};
     bleManager->writeCharacteristic(serviceIndex, writeCharIndex, subscribeCommand, sizeof(subscribeCommand));
     bleManager->subscribeCharacteristic(serviceIndex, notifyCharIndex);
@@ -235,7 +236,7 @@ bool CommandProcessor::autoHandler(int argc, char** argv) {
   }
 
   // Execute "movesense subscribe"
-  const char* movesenseArgs[] = {"subscribe"};
+  const char* movesenseArgs[] = {"subscribe", "52"};
   if (!movesenseHandler(1, const_cast<char**>(movesenseArgs))) {
     Serial.println("Failed to subscribe to Movesense.");
     return false;

@@ -217,7 +217,6 @@ bool BLEManager::subscribeCharacteristic(int sIndex, int cIndex) {
       Serial.print("Subscribed to characteristic ");
       Serial.println(selectedCharacteristic.uuid());
       isSubscribed = true;
-      IMUProcessor::getInstance().clearData();
       return true;
     } else {
       Serial.println("Subscription failed.");
@@ -428,7 +427,6 @@ void BLEManager::notificationCallback(BLEDevice device, BLECharacteristic charac
   const int sampleRate = numRows * 13;
   
   IMUProcessor& processor = IMUProcessor::getInstance();
-  static int sampleCount = 0;
 
   for (int i = 0; i < numRows; ++i) {
     uint32_t row_timestamp = timestamp + int(i * 1000 / sampleRate);

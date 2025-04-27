@@ -30,12 +30,28 @@ public:
   
   int calculateImpactLevel() const;
 
+  // --- New metric computations ---
+  // Peak linear acceleration (m/s²)
+  double getPeakLinearAcc() const;
+  // Gadd Severity Index (SI)
+  double getGaddSI() const;
+  // Head Injury Criterion over a window (ms)
+  double getHIC(double windowMs = 15.0) const;
+  // Peak angular acceleration (rad/s²)
+  double getPeakAngularAcc() const;
+  // Brain Injury Criterion (BrIC) with critical omegas
+  double getBrIC(double omegaCX, double omegaCY, double omegaCZ) const;
+  // Rotational Injury Criterion over a window (ms)
+  double getRIC(double windowMs = 36.0) const;
+
 private:
   IMUProcessor();
   IMUProcessor(const IMUProcessor&) = delete;
   IMUProcessor& operator=(const IMUProcessor&) = delete;
 
   std::deque<IMUData> imuDataBuffer;
+  // Helper: vector of angular accel samples (time, magnitude)
+  struct AngularSample { double time; double alpha; };
 };
 
 #endif
