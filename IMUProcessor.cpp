@@ -15,6 +15,10 @@ void IMUProcessor::processData(float accX, float accY, float accZ,
     }
 }
 
+void IMUProcessor::clearData() {
+    imuDataBuffer.clear();
+}
+
 int IMUProcessor::calculateImpactLevel() const {
     if (imuDataBuffer.size() < 5) {
         return -1;
@@ -31,7 +35,7 @@ int IMUProcessor::calculateImpactLevel() const {
     }
 
     Serial.print("Acceleration: ");
-    Serial.print(maxAcceleration);
+    Serial.println(maxAcceleration);
     
     if (maxAcceleration < IMPACT_THRESHOLD_LOW) {
         return 0;

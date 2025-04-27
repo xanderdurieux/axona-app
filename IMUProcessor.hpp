@@ -9,10 +9,10 @@
 
 #include "IMUData.hpp"
 
-#define IMPACT_THRESHOLD_LOW 2.0
-#define IMPACT_THRESHOLD_MEDIUM 4.0
-#define IMPACT_THRESHOLD_HIGH 6.0
-#define IMPACT_THRESHOLD_SEVERE 8.0
+#define IMPACT_THRESHOLD_LOW 2.5
+#define IMPACT_THRESHOLD_MEDIUM 5.0
+#define IMPACT_THRESHOLD_HIGH 7.5
+#define IMPACT_THRESHOLD_SEVERE 10.0
 
 class IMUProcessor {
 public:
@@ -26,6 +26,7 @@ public:
     float gyroX, float gyroY, float gyroZ,
     uint32_t timestamp
   );
+  void clearData();
   
   int calculateImpactLevel() const;
 

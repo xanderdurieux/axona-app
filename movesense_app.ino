@@ -1,18 +1,17 @@
-#include <ArduinoBLE.h>
 #include <Arduino.h>
 
 #include "BLEManager.hpp"
+
 #include "CommandProcessor.hpp"
 #include "IMUProcessor.hpp"
 
-#define STATUS_CHECK 9
-#define STATUS_LED 3
+#define LEVEL_0_LED 11
+#define LEVEL_1_LED 10
+#define LEVEL_2_LED 9
+#define LEVEL_3_LED 8
+#define LEVEL_4_LED 7
 
-#define LEVEL_0_LED 10
-#define LEVEL_1_LED 8
-#define LEVEL_2_LED 6
-#define LEVEL_3_LED 4
-#define LEVEL_4_LED 2
+#define NFC_WRITE_LED 6 
 
 BLEManager bleManager;
 CommandProcessor& commandProcessor = CommandProcessor::getInstance(&bleManager);
@@ -24,38 +23,30 @@ void setup() {
 
   commandProcessor.printHelp();
   
-  if (!BLE.begin()) {
-    Serial.println("Failed to initialize BLE!");
-    while (1);
+  if (!bleManager.begin()) {
+    while(1);
   }
-  Serial.println("BLE initialized.\n");
 
-  pinMode(STATUS_CHECK, INPUT);
-  pinMode(STATUS_LED, OUTPUT);
+  // Setup LEDs
   pinMode(LEVEL_0_LED, OUTPUT);
   pinMode(LEVEL_1_LED, OUTPUT);
   pinMode(LEVEL_2_LED, OUTPUT);
   pinMode(LEVEL_3_LED, OUTPUT);
   pinMode(LEVEL_4_LED, OUTPUT);
+  pinMode(NFC_WRITE_LED, OUTPUT);
 
-  digitalWrite(STATUS_LED, LOW);  
   digitalWrite(LEVEL_0_LED, LOW);
   digitalWrite(LEVEL_1_LED, LOW);
   digitalWrite(LEVEL_2_LED, LOW);
   digitalWrite(LEVEL_3_LED, LOW);
   digitalWrite(LEVEL_4_LED, LOW);
+  digitalWrite(NFC_WRITE_LED, LOW);
 }
 
 void loop() {
-  BLE.poll();  // Keep BLE stack active
-  commandProcessor.processInput();
+  bleManager.poll();
 
-  // STATUS CHECK
-  if (digitalRead(STATUS_CHECK) == HIGH) {
-    digitalWrite(STATUS_LED, HIGH);
-  } else {
-    digitalWrite(STATUS_LED, LOW);
-  }
+  commandProcessor.processInput();
 
   int impactLevel = imuProcessor.calculateImpactLevel();
 
