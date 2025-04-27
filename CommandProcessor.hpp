@@ -2,17 +2,7 @@
 #define COMMAND_PROCESSOR_H
 
 #include <Arduino.h>
-#include <string.h>
 #include "BLEManager.hpp"
-
-class CommandProcessor;
-
-struct Command {
-  const char* name;
-  const char* description;
-  const char* usage;
-  bool (CommandProcessor::*handler)(int argc, char** argv);
-};
 
 class CommandProcessor {
 public:
@@ -20,19 +10,26 @@ public:
     static CommandProcessor instance(bleManager);
     return instance;
   }
-
+  
   void processInput();
   void printHelp();
 
 private:
+  typedef bool (CommandProcessor::*CommandHandler)(int argc, char** argv);
+
+  struct Command {
+    const char* name;
+    const char* description;
+    const char* usage;
+    CommandHandler handler;
+  };
+
   CommandProcessor(BLEManager* bleManager);
   CommandProcessor(const CommandProcessor&) = delete;
   CommandProcessor& operator=(const CommandProcessor&) = delete;
 
-  BLEManager* bleManager;
-
-  static const Command COMMANDS[];
-  static const int COMMAND_COUNT;
+  char** tokenizeInput(String input, int& argc);
+  void freeTokens(char** argv, int argc);
 
   bool helpHandler(int argc, char** argv);
   bool scanHandler(int argc, char** argv);
@@ -46,10 +43,10 @@ private:
   bool disconnectHandler(int argc, char** argv);
   bool movesenseHandler(int argc, char** argv);
   bool autoHandler(int argc, char** argv);
-
-  // Helper methods
-  char** tokenizeInput(String input, int& argc);
-  void freeTokens(char** argv, int argc);
+  
+  BLEManager* bleManager;
+  static const Command COMMANDS[];
+  static const int COMMAND_COUNT;
 };
 
 #endif

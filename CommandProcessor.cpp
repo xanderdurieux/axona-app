@@ -1,8 +1,9 @@
 #include "CommandProcessor.hpp"
 
-CommandProcessor::CommandProcessor(BLEManager* bleManager) : bleManager(bleManager) {}
+CommandProcessor::CommandProcessor(BLEManager* bleManager)
+  : bleManager(bleManager) {}
 
-const Command CommandProcessor::COMMANDS[] = {
+const CommandProcessor::Command CommandProcessor::COMMANDS[] = {
   {"help", "Show available commands", "help", &CommandProcessor::helpHandler},
   {"scan", "Scan for BLE devices", "scan", &CommandProcessor::scanHandler},
   {"list", "List scanned devices", "list", &CommandProcessor::listHandler},
@@ -50,6 +51,19 @@ void CommandProcessor::processInput() {
     
     freeTokens(argv, argc);
   }
+}
+
+void CommandProcessor::printHelp() {
+  Serial.println("Available Commands:");
+  Serial.println("==================");
+  
+  for (int i = 0; i < COMMAND_COUNT; i++) {
+    Serial.print("\n");
+    Serial.print(COMMANDS[i].usage);
+    Serial.print("\n    ");
+    Serial.println(COMMANDS[i].description);
+  }
+  Serial.println();
 }
 
 char** CommandProcessor::tokenizeInput(String input, int& argc) {
@@ -229,17 +243,4 @@ bool CommandProcessor::autoHandler(int argc, char** argv) {
 
   Serial.println("Auto command executed successfully.");
   return true;
-}
-
-void CommandProcessor::printHelp() {
-  Serial.println("Available Commands:");
-  Serial.println("==================");
-  
-  for (int i = 0; i < COMMAND_COUNT; i++) {
-    Serial.print("\n");
-    Serial.print(COMMANDS[i].usage);
-    Serial.print("\n    ");
-    Serial.println(COMMANDS[i].description);
-  }
-  Serial.println();
 }
