@@ -1,5 +1,37 @@
 #include "BLEManager.hpp"
 
+/**
+ * @brief Initialize the BLE module
+ * 
+ * @return true if BLE initialization was successful
+ * @return false if BLE initialization failed
+ */
+bool BLEManager::begin() {
+  bool success = BLE.begin();
+  if (success) {
+    Serial.println("BLE initialized");
+  } else {
+    Serial.println("Failed to initialize BLE!");
+  }
+  return success;
+}
+
+/**
+ * @brief Process BLE events
+ * 
+ * This method should be called regularly in the main loop
+ */
+void BLEManager::poll() {
+  BLE.poll();
+}
+
+/**
+ * @brief Check if a device is already in the scanned devices list
+ * 
+ * @param device The BLE device to check
+ * @return true if the device is already in the list
+ * @return false if the device is not in the list
+ */
 bool BLEManager::deviceAlreadyListed(BLEDevice device) {
   for (int i = 0; i < deviceCount; i++) {
     if (scannedDevices[i].address() == device.address()) {
@@ -9,6 +41,13 @@ bool BLEManager::deviceAlreadyListed(BLEDevice device) {
   return false;
 }
 
+/**
+ * @brief Scan for available BLE devices
+ * 
+ * Scans for BLE devices for the duration specified by SCAN_TIME
+ * and adds them to the scannedDevices array if they meet the
+ * signal strength requirements (MIN_RSSI)
+ */
 void BLEManager::scanDevices() {
   deviceCount = 0;
   Serial.println("Scanning for BLE devices...");
@@ -26,6 +65,12 @@ void BLEManager::scanDevices() {
   Serial.println("Scan complete.\n");
 }
 
+/**
+ * @brief Get the index of a device in the scannedDevices array by address
+ * 
+ * @param address The BLE address to search for
+ * @return int The index of the device, or -1 if not found
+ */
 int BLEManager::getDeviceIndex(String address) {
   for (int i = 0; i < deviceCount; i++) {
     if (scannedDevices[i].address() == address) {
@@ -35,6 +80,11 @@ int BLEManager::getDeviceIndex(String address) {
   return -1;
 }
 
+/**
+ * @brief List all discovered devices to the Serial console
+ * 
+ * Displays device index, address, and name (if available)
+ */
 void BLEManager::listDevices() {
   if (deviceCount == 0) {
     Serial.println("No devices found. Run the 'scan' command first.");
@@ -57,6 +107,13 @@ void BLEManager::listDevices() {
   Serial.println("Use command 'select <device index>' to connect.\n");
 }
 
+/**
+ * @brief Connect to a device by its index in the scannedDevices array
+ * 
+ * @param index The index of the device to connect to
+ * @return true if connection was successful
+ * @return false if connection failed
+ */
 bool BLEManager::selectDevice(int index) {
   if (index < 0 || index >= deviceCount) {
     Serial.println("Invalid device index.");
@@ -75,6 +132,12 @@ bool BLEManager::selectDevice(int index) {
   }
 }
 
+/**
+ * @brief Discover and list all services and characteristics of the connected device
+ * 
+ * Lists all services and characteristics to the Serial console, showing UUIDs
+ * and properties (read, write, notify)
+ */
 void BLEManager::listServicesAndCharacteristics() {
   if (!selectedDevice) {
     Serial.println("No device connected.");
@@ -119,6 +182,14 @@ void BLEManager::listServicesAndCharacteristics() {
   Serial.println("To write, use: write <service index> <characteristic index> <hex data>\n");
 }
 
+/**
+ * @brief Subscribe to notifications from a characteristic
+ * 
+ * @param sIndex The index of the service
+ * @param cIndex The index of the characteristic
+ * @return true if subscription was successful
+ * @return false if subscription failed
+ */
 bool BLEManager::subscribeCharacteristic(int sIndex, int cIndex) {
   if (!selectedDevice) {
     Serial.println("No device connected.");
@@ -146,6 +217,7 @@ bool BLEManager::subscribeCharacteristic(int sIndex, int cIndex) {
       Serial.print("Subscribed to characteristic ");
       Serial.println(selectedCharacteristic.uuid());
       isSubscribed = true;
+      IMUProcessor::getInstance().clearData();
       return true;
     } else {
       Serial.println("Subscription failed.");
@@ -157,6 +229,14 @@ bool BLEManager::subscribeCharacteristic(int sIndex, int cIndex) {
   }
 }
 
+/**
+ * @brief Unsubscribe from notifications from a characteristic
+ * 
+ * @param sIndex The index of the service
+ * @param cIndex The index of the characteristic
+ * @return true if unsubscription was successful
+ * @return false if unsubscription failed
+ */
 bool BLEManager::unsubscribeCharacteristic(int sIndex, int cIndex) {
   if (!selectedDevice) {
     Serial.println("No device connected.");
@@ -183,6 +263,7 @@ bool BLEManager::unsubscribeCharacteristic(int sIndex, int cIndex) {
       Serial.print("Unsubscribed from characteristic ");
       Serial.println(characteristic.uuid());
       isSubscribed = false;
+      IMUProcessor::getInstance().clearData();
       return true;
     } else {
       Serial.println("Unsubscribe failed.");
@@ -194,6 +275,14 @@ bool BLEManager::unsubscribeCharacteristic(int sIndex, int cIndex) {
   }
 }
 
+/**
+ * @brief Read the value of a characteristic
+ * 
+ * @param sIndex The index of the service
+ * @param cIndex The index of the characteristic
+ * @return true if read was successful
+ * @return false if read failed
+ */
 bool BLEManager::readCharacteristic(int sIndex, int cIndex) {
   if (!selectedDevice) {
     Serial.println("No device connected.");
@@ -238,6 +327,16 @@ bool BLEManager::readCharacteristic(int sIndex, int cIndex) {
   }
 }
 
+/**
+ * @brief Write a value to a characteristic
+ * 
+ * @param sIndex The index of the service
+ * @param cIndex The index of the characteristic
+ * @param data Pointer to the data to write
+ * @param length Length of the data to write
+ * @return true if write was successful
+ * @return false if write failed
+ */
 bool BLEManager::writeCharacteristic(int sIndex, int cIndex, const uint8_t *data, int length) {
   if (!selectedDevice) {
     Serial.println("No device connected.");
@@ -280,6 +379,11 @@ bool BLEManager::writeCharacteristic(int sIndex, int cIndex, const uint8_t *data
   }
 }
 
+/**
+ * @brief Disconnect from the currently connected device
+ * 
+ * Closes the connection with the currently selected device
+ */
 void BLEManager::disconnect() {
   if (selectedDevice) {
     selectedDevice.disconnect();
@@ -290,6 +394,15 @@ void BLEManager::disconnect() {
   }
 }
 
+/**
+ * @brief Callback function for BLE characteristic notifications
+ * 
+ * This method is called when a subscribed characteristic is updated.
+ * It processes the received IMU data and forwards it to the IMUProcessor.
+ * 
+ * @param device The BLE device that sent the notification
+ * @param characteristic The characteristic that was updated
+ */
 void BLEManager::notificationCallback(BLEDevice device, BLECharacteristic characteristic) {
 
   int length = characteristic.valueLength();
@@ -306,26 +419,9 @@ void BLEManager::notificationCallback(BLEDevice device, BLECharacteristic charac
 
   DataView dv = DataView(data, length);
 
-  // Serial.print("Data length: ");
-  // Serial.print(length);
-  // Serial.print(" -> Raw Data: ");
-  // for (int i = 0; i < length; i++) {
-  //   Serial.print(dv.getUint8(i));
-  //   Serial.print(" ");
-  // }  
-  // Serial.println();
-
   uint8_t packet_type = dv.getUint8(0);
   uint16_t reference = dv.getUint8(1);
   uint32_t timestamp = dv.getUint32(2);
-
-  // Debug output - comment out when using Serial Plotter
-  // Serial.print("Packet type: ");
-  // Serial.print(packet_type);
-  // Serial.print(" | Reference: ");
-  // Serial.print(reference);
-  // Serial.print(" | Timestamp: ");
-  // Serial.println(timestamp);
 
   const int sensorDataSize = 12;
   const int numRows = (length - 2) / (2 * sensorDataSize); 
@@ -337,31 +433,14 @@ void BLEManager::notificationCallback(BLEDevice device, BLECharacteristic charac
   for (int i = 0; i < numRows; ++i) {
     uint32_t row_timestamp = timestamp + int(i * 1000 / sampleRate);
 
-    // Acceleration data
     float accX = dv.getFloat32(6 + i * sensorDataSize);
     float accY = dv.getFloat32(6 + i * sensorDataSize + 4);
     float accZ = dv.getFloat32(6 + i * sensorDataSize + 8);
 
-    // Gyroscope data
     float gyroX = dv.getFloat32(6 + numRows * sensorDataSize + i * sensorDataSize);
     float gyroY = dv.getFloat32(6 + numRows * sensorDataSize + i * sensorDataSize + 4);
     float gyroZ = dv.getFloat32(6 + numRows * sensorDataSize + i * sensorDataSize + 8);
 
-    // Process the IMU data
     processor.processData(accX, accY, accZ, gyroX, gyroY, gyroZ, row_timestamp);
-    
-    // Output format for Serial Plotter
-    // Serial.print("AccX:");
-    // Serial.print(accX);
-    // Serial.print(" AccY:");
-    // Serial.print(accY);
-    // Serial.print(" AccZ:");
-    // Serial.print(accZ);
-    // Serial.print(" GyroX:");
-    // Serial.print(gyroX);
-    // Serial.print(" GyroY:");
-    // Serial.print(gyroY);
-    // Serial.print(" GyroZ:");
-    // Serial.println(gyroZ);
   }
 }

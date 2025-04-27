@@ -2,11 +2,11 @@
 #define BLE_MANAGER_H
 
 #include <ArduinoBLE.h>
-#include "IMUData.hpp"
-#include "IMUProcessor.hpp"
-
 #include <cstdint>
 #include <cstring>
+
+#include "IMUData.hpp"
+#include "IMUProcessor.hpp"
 
 #define MAX_DEVICES 10
 #define MIN_RSSI -80
@@ -62,7 +62,9 @@ public:
 class BLEManager {
 public:
   BLEManager(): deviceCount(0) {};
-
+  
+  bool begin();
+  void poll();
   void scanDevices();
   void listDevices();
   bool selectDevice(int index);
@@ -72,15 +74,13 @@ public:
   bool readCharacteristic(int sIndex, int cIndex);
   bool writeCharacteristic(int sIndex, int cIndex, const uint8_t *data, int length);
   void disconnect();
-    
   int getDeviceIndex(String address);
 
 private:
   bool deviceAlreadyListed(BLEDevice device);
-
-  bool isSubscribed = false;
   static void notificationCallback(BLEDevice device, BLECharacteristic characteristic);
 
+  bool isSubscribed = false;
   BLEDevice selectedDevice;
   BLECharacteristic selectedCharacteristic;
   BLEDevice scannedDevices[10];
