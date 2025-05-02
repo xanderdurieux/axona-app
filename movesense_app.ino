@@ -77,22 +77,24 @@ void loop() {
     digitalWrite(LEVEL_4_LED, impactLevel >= 4 ? HIGH : LOW);   
   }
 
-  if (counter++ > 50) {
-    counter = 0;
-    // Debugging metrics to Serial Plotter
-    Serial.print("ImpactLevel:");
-    Serial.print(impactLevel);
-    Serial.print(" PeakLinearAcc:");
-    Serial.print(imuProcessor.getPeakLinearAcc());
-    Serial.print(" GaddSI:");
-    Serial.print(imuProcessor.getGaddSI());
-    Serial.print(" HIC:");
-    Serial.print(imuProcessor.getHIC(15)); // Example window of 15ms
-    Serial.print(" PeakAngularAcc:");
-    Serial.print(imuProcessor.getPeakAngularAcc());
-    Serial.print(" BrIC:");
-    Serial.print(imuProcessor.getBrIC(1.0, 1.0, 1.0)); // Example omegaC values
-    Serial.print(" RIC:");
-    Serial.println(imuProcessor.getRIC(15)); // Example window of 15ms
+  if (impactLevel > -1 ) {
+    if (counter++ > 50) {
+      counter = 0;
+      // Debugging metrics to Serial Plotter
+      Serial.print("ImpactLevel:");
+      Serial.print(impactLevel);
+      Serial.print(" PeakLinearAcc:");
+      Serial.print(imuProcessor.getPeakLinearAcc());
+      Serial.print(" GaddSI:");
+      Serial.print(imuProcessor.getGaddSI());
+      Serial.print(" HIC:");
+      Serial.print(imuProcessor.getHIC(15)); // Example window of 15ms
+      Serial.print(" PeakAngularAcc:");
+      Serial.print(imuProcessor.getPeakAngularAcc());
+      Serial.print(" BrIC:");
+      Serial.print(imuProcessor.getBrIC(1.0, 1.0, 1.0)); // Example omegaC values
+      Serial.print(" RIC:");
+      Serial.println(imuProcessor.getRIC(15)); // Example window of 15ms
+    }
   }
 }
