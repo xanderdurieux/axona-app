@@ -4,8 +4,6 @@
 #include <ArduinoBLE.h>
 #include <cstdint>
 #include <cstring>
-
-#include "IMUData.hpp"
 #include "IMUProcessor.hpp"
 
 #define MAX_DEVICES 10
@@ -76,11 +74,13 @@ public:
   void disconnect();
   int getDeviceIndex(String address);
 
+  bool isSubscribed() const { return subscribed; }
+
 private:
   bool deviceAlreadyListed(BLEDevice device);
   static void notificationCallback(BLEDevice device, BLECharacteristic characteristic);
 
-  bool isSubscribed = false;
+  bool subscribed = false;
   BLEDevice selectedDevice;
   BLECharacteristic selectedCharacteristic;
   BLEDevice scannedDevices[10];

@@ -1,100 +1,127 @@
 #include <Arduino.h>
+#include <ArduinoBLE.h>
 
 #include "BLEManager.hpp"
-#include "CommandProcessor.hpp"
 #include "IMUProcessor.hpp"
-// #include "RFIDManager.hpp"
 
-#define STATUS_READ 12
-#define STATUS_LED 13
+#define DEBUG
 
-#define LEVEL_0_LED 11
-#define LEVEL_1_LED 10
-#define LEVEL_2_LED 9
-#define LEVEL_3_LED 8
-#define LEVEL_4_LED 7 
-
-#define RFID_SS_PIN 6
-#define RFID_SCK_PIN 5
-#define RFID_MOSI_PIN 4
-#define RFID_MISO_PIN 3
-#define RFID_RST_PIN 2
-
-int counter = 0;
+#define LED_PIN_1 11
+#define LED_PIN_2 9
+#define LED_PIN_3 7
+#define LED_PIN_4 5
+#define LED_PIN_5 3
 
 BLEManager bleManager;
-// RFIDManager rfidManager(RFID_SS_PIN, RFID_RST_PIN); 
-
-CommandProcessor& commandProcessor = CommandProcessor::getInstance(&bleManager);
 IMUProcessor& imuProcessor = IMUProcessor::getInstance();
 
 void setup() {
   Serial.begin(9600);
-  while (!Serial);
+  while (!Serial) delay(10);
 
-  commandProcessor.printHelp();
-  
-  if (!bleManager.begin()) {
-    while (1);
+  // Initialize LED pins
+  for (int i = 2; i <= 6; i++) {
+    pinMode(i, OUTPUT);
+    digitalWrite(i, LOW);
   }
 
-  // Setup LEDs
-  pinMode(STATUS_READ, INPUT);
-  pinMode(STATUS_LED, OUTPUT);
+  if (!bleManager.begin()) {
+    Serial.println("Failed to initialize BLE");
+    while (1);
+  }
+  Serial.println("BLE initialized successfully");
 
-  pinMode(LEVEL_0_LED, OUTPUT);
-  pinMode(LEVEL_1_LED, OUTPUT);
-  pinMode(LEVEL_2_LED, OUTPUT);
-  pinMode(LEVEL_3_LED, OUTPUT);
-  pinMode(LEVEL_4_LED, OUTPUT);
+  bleManager.scanDevices();
+  bleManager.listDevices();
 
-  digitalWrite(STATUS_LED, LOW);
-  digitalWrite(LEVEL_0_LED, LOW);
-  digitalWrite(LEVEL_1_LED, LOW);
-  digitalWrite(LEVEL_2_LED, LOW);
-  digitalWrite(LEVEL_3_LED, LOW);
-  digitalWrite(LEVEL_4_LED, LOW);
+  const char* targetAddress = "74:92:ba:10:e8:23";
+  int targetIndex = bleManager.getDeviceIndex(targetAddress);
+  if (targetIndex == -1) {
+    Serial.println("Target device not found.");
+    return;
+  }
+
+  if (!bleManager.selectDevice(targetIndex)) {
+    Serial.println("Failed to select device.");
+    return;
+  }
+  Serial.println("Device selected successfully");
+  
+  String sampleRate = "52";
+  const uint8_t subscribeCommand[] = {1, 99, '/', 'M', 'e', 'a', 's', '/', 'I', 'M', 'U', '6', '/', sampleRate.charAt(0), sampleRate.charAt(1), sampleRate.charAt(2), sampleRate.charAt(3)};
+  int commandLength = 13 + sampleRate.length();
+
+  if(!bleManager.writeCharacteristic(5, 0, subscribeCommand, commandLength)) {
+    Serial.println("Failed to write characteristic");
+    return;
+  }
+  if(!bleManager.subscribeCharacteristic(5, 1)) {
+    Serial.println("Failed to subscribe to characteristic");
+    return;
+  }
+  Serial.println("Subscribed to IMU sensor");  
 }
 
 void loop() {
-  if (digitalRead(STATUS_READ) == HIGH) {
-    digitalWrite(STATUS_LED, HIGH);
-  } else {
-    digitalWrite(STATUS_LED, LOW);
-  }
-
   bleManager.poll();
 
-  commandProcessor.processInput();
+  // Get impact level (0-4)
+  if (bleManager.isSubscribed()) {
+    int impactLevel = imuProcessor.getImpactLevel();
+  
+    // Update LEDs based on impact level
+    digitalWrite(LED_PIN_1, impactLevel >= 0 ? HIGH : LOW);
+    digitalWrite(LED_PIN_2, impactLevel >= 1 ? HIGH : LOW);
+    digitalWrite(LED_PIN_3, impactLevel >= 2 ? HIGH : LOW);
+    digitalWrite(LED_PIN_4, impactLevel >= 3 ? HIGH : LOW);
+    digitalWrite(LED_PIN_5, impactLevel >= 4 ? HIGH : LOW);
 
-  int impactLevel = imuProcessor.calculateImpactLevel();
-
-  if (impactLevel > -1) {
-    digitalWrite(LEVEL_0_LED, HIGH);
-    digitalWrite(LEVEL_1_LED, impactLevel >= 1 ? HIGH : LOW);
-    digitalWrite(LEVEL_2_LED, impactLevel >= 2 ? HIGH : LOW);
-    digitalWrite(LEVEL_3_LED, impactLevel >= 3 ? HIGH : LOW);
-    digitalWrite(LEVEL_4_LED, impactLevel >= 4 ? HIGH : LOW);   
-  }
-
-  if (impactLevel > -1 ) {
-    if (counter++ > 50) {
-      counter = 0;
-      // Debugging metrics to Serial Plotter
-      Serial.print("ImpactLevel:");
-      Serial.print(impactLevel);
-      Serial.print(" PeakLinearAcc:");
-      Serial.print(imuProcessor.getPeakLinearAcc());
-      Serial.print(" GaddSI:");
-      Serial.print(imuProcessor.getGaddSI());
-      Serial.print(" HIC:");
-      Serial.print(imuProcessor.getHIC(15)); // Example window of 15ms
-      Serial.print(" PeakAngularAcc:");
-      Serial.print(imuProcessor.getPeakAngularAcc());
-      Serial.print(" BrIC:");
-      Serial.print(imuProcessor.getBrIC(1.0, 1.0, 1.0)); // Example omegaC values
-      Serial.print(" RIC:");
-      Serial.println(imuProcessor.getRIC(15)); // Example window of 15ms
+    // If impact detected (level > 0), print metrics
+    if (impactLevel > 0) {
+      Serial.println("\n--- Impact Detected ---");
+      Serial.print("Impact Level: ");
+      Serial.println(impactLevel);
+      
+      // Get and print HIC (Head Injury Criterion)
+      double hic = imuProcessor.getHIC(15.0);  // 15ms window
+      Serial.print("HIC: ");
+      Serial.println(hic);
+      
+      // Get and print BrIC (Brain Injury Criterion)
+      // Using standard critical angular velocities (rad/s)
+      double bric = imuProcessor.getBrIC(66.3, 66.3, 66.3);
+      Serial.print("BrIC: ");
+      Serial.println(bric);
+      
+      // Determine concussion risk based on HIC and BrIC
+      String concussionRisk = "Low";
+      if (hic > 1000 || bric > 0.85) {
+        concussionRisk = "High";
+      } else if (hic > 500 || bric > 0.65) {
+        concussionRisk = "Medium";
+      }
+      Serial.print("Concussion Risk: ");
+      Serial.println(concussionRisk);
+      
+      // Get and print peak linear acceleration
+      double peakAcc = imuProcessor.getPeakLinearAcc();
+      Serial.print("Peak Acceleration: ");
+      Serial.print(peakAcc);
+      Serial.println(" m/s²");
+      
+      // Get and print velocities
+      double velBefore = imuProcessor.getVelocityBeforeImpact();
+      double velAfter = imuProcessor.getVelocityAfterImpact();
+      Serial.print("Velocity Before Impact: ");
+      Serial.print(velBefore);
+      Serial.println(" m/s");
+      Serial.print("Velocity After Impact: ");
+      Serial.print(velAfter);
+      Serial.println(" m/s");
+      
+      Serial.println("----------------------\n");
     }
   }
+
+  delay(1000);
 }

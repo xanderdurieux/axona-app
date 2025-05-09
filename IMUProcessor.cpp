@@ -1,144 +1,162 @@
 #include "IMUProcessor.hpp"
 #include <algorithm>
 
-IMUProcessor::IMUProcessor() {}
+IMUProcessor* IMUProcessor::instance = nullptr;
 
 void IMUProcessor::processData(float accX, float accY, float accZ,
                                float gyroX, float gyroY, float gyroZ,
                                uint32_t timestamp) {
     IMUData processedData = { timestamp, accX, accY, accZ, gyroX, gyroY, gyroZ };
     imuDataBuffer.push_back(processedData);
-    if (imuDataBuffer.size() > 50) {
+    if (imuDataBuffer.size() > MAX_BUFFER_SIZE) {
         imuDataBuffer.pop_front();
     }
 }
 
 void IMUProcessor::clearData() {
     imuDataBuffer.clear();
+    impactDetected = false;
+    lastImpactTime = 0;
 }
 
-int IMUProcessor::calculateImpactLevel() const {
-    if (imuDataBuffer.size() < 5) return -1;
-    double maxG = 0.0;
-    for (const auto& data : imuDataBuffer) {
-        double g = data.getAcceleration() / 9.81;
-        maxG = std::max(maxG, g);
+int IMUProcessor::getImpactLevel() {
+    if (imuDataBuffer.empty()) return 0;
+    
+    // Check if we're in cooldown period
+    if (impactDetected && (imuDataBuffer.back().timestamp - lastImpactTime < IMPACT_COOLDOWN)) {
+        return 0;
     }
-    // thresholds assumed defined elsewhere
-    if (maxG < IMPACT_THRESHOLD_LOW)     return 0;
-    else if (maxG < IMPACT_THRESHOLD_MEDIUM)  return 1;
-    else if (maxG < IMPACT_THRESHOLD_HIGH)    return 2;
-    else if (maxG < IMPACT_THRESHOLD_SEVERE)  return 3;
-    else                                     return 4;
-}
-
-// Peak linear acceleration (m/s²)
-double IMUProcessor::getPeakLinearAcc() const {
-    double peak = 0;
-    for (const auto& m : imuDataBuffer) {
-        peak = std::max(peak, static_cast<double>(m.getAcceleration()));
+    
+    double peakAcc = getPeakLinearAcc();
+    
+    if (peakAcc >= IMPACT_THRESHOLD_SEVERE) {
+        impactDetected = true;
+        lastImpactTime = imuDataBuffer.back().timestamp;
+        return 4;
+    } else if (peakAcc >= IMPACT_THRESHOLD_HIGH) {
+        impactDetected = true;
+        lastImpactTime = imuDataBuffer.back().timestamp;
+        return 3;
+    } else if (peakAcc >= IMPACT_THRESHOLD_MEDIUM) {
+        impactDetected = true;
+        lastImpactTime = imuDataBuffer.back().timestamp;
+        return 2;
+    } else if (peakAcc >= IMPACT_THRESHOLD_LOW) {
+        impactDetected = true;
+        lastImpactTime = imuDataBuffer.back().timestamp;
+        return 1;
     }
-    return peak;
+    
+    return 0;
 }
 
-// Gadd Severity Index: SI = ∫ a(t)^2.5 dt
-double IMUProcessor::getGaddSI() const {
-    if (imuDataBuffer.size() < 2) return 0;
-    double SI = 0;
-    for (size_t i = 1; i < imuDataBuffer.size(); ++i) {
-        const auto& prev = imuDataBuffer[i-1];
-        const auto& cur  = imuDataBuffer[i];
-        double dt = (cur.timestamp - prev.timestamp) / 1000.0;
-        double a  = cur.getAcceleration();
-        SI += std::pow(a, 2.5) * dt;
-    }
-    return SI;
-}
-
-// Head Injury Criterion (HIC)
-double IMUProcessor::getHIC(double windowMs) const {
-    if (imuDataBuffer.size() < 2) return 0;
-    double maxHIC = 0;
-    double maxW = windowMs / 1000.0;
-    for (size_t i = 0; i < imuDataBuffer.size(); ++i) {
-        double t0 = imuDataBuffer[i].timestamp / 1000.0;
-        double area = 0;
-        for (size_t j = i + 1; j < imuDataBuffer.size(); ++j) {
-            double t1 = imuDataBuffer[j].timestamp / 1000.0;
-            double dt = (imuDataBuffer[j].timestamp - imuDataBuffer[j-1].timestamp) / 1000.0;
-            double T = t1 - t0;
-            if (T > maxW) break;
-            area += imuDataBuffer[j-1].getAcceleration() * dt;
-            double avgA = area / T;
-            double H = std::pow(avgA, 2.5) * T;
-            maxHIC = std::max(maxHIC, H);
+double IMUProcessor::getHIC(double window_ms) {
+    if (imuDataBuffer.empty() || !impactDetected) return 0.0;
+    
+    std::vector<IMUData> window = getImpactWindow(lastImpactTime, window_ms);
+    if (window.empty()) return 0.0;
+    
+    double maxHIC = 0.0;
+    double dt = window_ms / window.size();
+    
+    for (size_t i = 0; i < window.size(); ++i) {
+        double sum = 0.0;
+        for (size_t j = i; j < window.size(); ++j) {
+            double acc = calculateLinearAcceleration(window[j]) / G_CONSTANT; // Convert to g
+            sum += acc * dt;
+            double t = (j - i + 1) * dt / 1000.0; // Convert to seconds
+            double hic = pow(sum, 2.5) * t;
+            maxHIC = std::max(maxHIC, hic);
         }
     }
+    
     return maxHIC;
 }
 
-// Peak angular acceleration (rad/s²)
-double IMUProcessor::getPeakAngularAcc() const {
-    if (imuDataBuffer.size() < 2) return 0;
-    double peak = 0;
-    for (size_t i = 1; i < imuDataBuffer.size(); ++i) {
-        const auto& prev = imuDataBuffer[i-1];
-        const auto& cur  = imuDataBuffer[i];
-        double dt = (cur.timestamp - prev.timestamp) / 1000.0;
-        if (dt <= 0) continue;
-        double ax = (cur.gyroX - prev.gyroX) / dt;
-        double ay = (cur.gyroY - prev.gyroY) / dt;
-        double az = (cur.gyroZ - prev.gyroZ) / dt;
-        double mag = std::sqrt(ax*ax + ay*ay + az*az);
-        peak = std::max(peak, mag);
+double IMUProcessor::getBrIC(double crit_x, double crit_y, double crit_z) {
+    if (imuDataBuffer.empty() || !impactDetected) return 0.0;
+    
+    std::vector<IMUData> window = getImpactWindow(lastImpactTime, 15.0); // Use 15ms window for BrIC
+    if (window.empty()) return 0.0;
+    
+    double max_omega_x = 0.0, max_omega_y = 0.0, max_omega_z = 0.0;
+    
+    for (const auto& data : window) {
+        max_omega_x = std::max(max_omega_x, static_cast<double>(data.gyroX > 0 ? data.gyroX : -data.gyroX));
+        max_omega_y = std::max(max_omega_y, static_cast<double>(data.gyroY > 0 ? data.gyroY : -data.gyroY));
+        max_omega_z = std::max(max_omega_z, static_cast<double>(data.gyroZ > 0 ? data.gyroZ : -data.gyroZ));
     }
-    return peak;
+    
+    double bric = sqrt(pow(max_omega_x/crit_x, 2) + 
+                      pow(max_omega_y/crit_y, 2) + 
+                      pow(max_omega_z/crit_z, 2));
+    
+    return bric;
 }
 
-// Brain Injury Criterion (BrIC)
-double IMUProcessor::getBrIC(double omegaCX, double omegaCY, double omegaCZ) const {
-    double px=0, py=0, pz=0;
-    for (const auto& m : imuDataBuffer) {
-        px = std::max(px, std::fabs(static_cast<double>(m.gyroX)));
-        py = std::max(py, std::fabs(static_cast<double>(m.gyroY)));
-        pz = std::max(pz, std::fabs(static_cast<double>(m.gyroZ)));
+double IMUProcessor::getPeakLinearAcc() {
+    if (imuDataBuffer.empty()) return 0.0;
+    
+    double peakAcc = 0.0;
+    for (const auto& data : imuDataBuffer) {
+        peakAcc = std::max(peakAcc, calculateLinearAcceleration(data) / G_CONSTANT); // Convert to g
     }
-    return std::sqrt(
-        std::pow(px/omegaCX, 2) +
-        std::pow(py/omegaCY, 2) +
-        std::pow(pz/omegaCZ, 2)
-    );
+    return peakAcc;
 }
 
-// Rotational Injury Criterion (RIC)
-double IMUProcessor::getRIC(double windowMs) const {
-    // build angular accel series
-    std::vector<AngularSample> Adata;
-    for (size_t i = 1; i < imuDataBuffer.size(); ++i) {
-        const auto& prev = imuDataBuffer[i-1];
-        const auto& cur  = imuDataBuffer[i];
-        double dt = (cur.timestamp - prev.timestamp) / 1000.0;
-        if (dt <= 0) continue;
-        double ax = (cur.gyroX - prev.gyroX) / dt;
-        double ay = (cur.gyroY - prev.gyroY) / dt;
-        double az = (cur.gyroZ - prev.gyroZ) / dt;
-        Adata.push_back({ cur.timestamp/1000.0, std::sqrt(ax*ax + ay*ay + az*az) });
-    }
-    if (Adata.size() < 2) return 0;
-    double maxRIC = 0;
-    double maxW = windowMs / 1000.0;
-    for (size_t i = 0; i < Adata.size(); ++i) {
-        double t0 = Adata[i].time, area=0;
-        for (size_t j = i+1; j < Adata.size(); ++j) {
-            double t1 = Adata[j].time;
-            double dt = t1 - Adata[j-1].time;
-            double T = t1 - t0;
-            if (T > maxW) break;
-            area += Adata[j-1].alpha * dt;
-            double avg = area / T;
-            double R = std::pow(avg, 2.5) * T;
-            maxRIC = std::max(maxRIC, R);
+double IMUProcessor::getVelocityBeforeImpact() {
+    if (imuDataBuffer.empty() || !impactDetected) return 0.0;
+    
+    // Get data from 100ms before impact
+    std::vector<IMUData> window = getImpactWindow(lastImpactTime - 100, 100);
+    if (window.empty()) return 0.0;
+    
+    return integrateAcceleration(window);
+}
+
+double IMUProcessor::getVelocityAfterImpact() {
+    if (imuDataBuffer.empty() || !impactDetected) return 0.0;
+    
+    // Get data from 100ms after impact
+    std::vector<IMUData> window = getImpactWindow(lastImpactTime, 100);
+    if (window.empty()) return 0.0;
+    
+    return integrateAcceleration(window);
+}
+
+double IMUProcessor::calculateLinearAcceleration(const IMUData& data) {
+    return sqrt(data.accX * data.accX + data.accY * data.accY + data.accZ * data.accZ);
+}
+
+double IMUProcessor::calculateAngularVelocity(const IMUData& data) {
+    return sqrt(data.gyroX * data.gyroX + data.gyroY * data.gyroY + data.gyroZ * data.gyroZ);
+}
+
+std::vector<IMUData> IMUProcessor::getImpactWindow(uint32_t impactTime, double window_ms) {
+    std::vector<IMUData> window;
+    if (imuDataBuffer.empty()) return window;
+    
+    uint32_t startTime = impactTime - window_ms;
+    uint32_t endTime = impactTime + window_ms;
+    
+    for (const auto& data : imuDataBuffer) {
+        if (data.timestamp >= startTime && data.timestamp <= endTime) {
+            window.push_back(data);
         }
     }
-    return maxRIC;
+    
+    return window;
+}
+
+double IMUProcessor::integrateAcceleration(const std::vector<IMUData>& window) {
+    if (window.size() < 2) return 0.0;
+    
+    double velocity = 0.0;
+    for (size_t i = 1; i < window.size(); ++i) {
+        double dt = (window[i].timestamp - window[i-1].timestamp) / 1000.0; // Convert to seconds
+        double acc = calculateLinearAcceleration(window[i-1]);
+        velocity += acc * dt;
+    }
+    
+    return velocity;
 }
