@@ -16,7 +16,7 @@ BLEManager bleManager;
 IMUProcessor& imuProcessor = IMUProcessor::getInstance();
 
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(115200);
   while (!Serial) delay(10);
 
   // Initialize LED pins
@@ -68,20 +68,38 @@ void loop() {
   // Get impact level (0-4)
   if (bleManager.isSubscribed()) {
     int impactLevel = imuProcessor.getImpactLevel();
-  
-    // Update LEDs based on impact level
-    digitalWrite(LED_PIN_1, impactLevel >= 0 ? HIGH : LOW);
-    digitalWrite(LED_PIN_2, impactLevel >= 1 ? HIGH : LOW);
-    digitalWrite(LED_PIN_3, impactLevel >= 2 ? HIGH : LOW);
-    digitalWrite(LED_PIN_4, impactLevel >= 3 ? HIGH : LOW);
-    digitalWrite(LED_PIN_5, impactLevel >= 4 ? HIGH : LOW);
 
-    // If impact detected (level > 0), print metrics
+    static unsigned long lastImpactTime = 0;
+    static int lastImpactLevel = 0;
+    const unsigned long LED_DURATION = 3000; // LEDs stay on for 1 second
+    
+    if (impactLevel > 0) {
+        lastImpactTime = millis();
+        lastImpactLevel = impactLevel;
+    }
+    
+    // Update LEDs based on impact level and timing
+    if (millis() - lastImpactTime < LED_DURATION) {
+        digitalWrite(LED_PIN_1, lastImpactLevel >= 0 ? HIGH : LOW);
+        digitalWrite(LED_PIN_2, lastImpactLevel >= 1 ? HIGH : LOW);
+        digitalWrite(LED_PIN_3, lastImpactLevel >= 2 ? HIGH : LOW);
+        digitalWrite(LED_PIN_4, lastImpactLevel >= 3 ? HIGH : LOW);
+        digitalWrite(LED_PIN_5, lastImpactLevel >= 4 ? HIGH : LOW);
+    } else {
+        // Turn off all LEDs after duration
+        digitalWrite(LED_PIN_2, LOW);
+        digitalWrite(LED_PIN_3, LOW);
+        digitalWrite(LED_PIN_4, LOW);
+        digitalWrite(LED_PIN_5, LOW);
+    }
+      
+
+    // If impact detected (level > 0) and cooldown period has passed
     if (impactLevel > 0) {
       Serial.println("\n--- Impact Detected ---");
       Serial.print("Impact Level: ");
       Serial.println(impactLevel);
-      
+
       // Get and print HIC (Head Injury Criterion)
       double hic = imuProcessor.getHIC(15.0);  // 15ms window
       Serial.print("HIC: ");
@@ -89,15 +107,15 @@ void loop() {
       
       // Get and print BrIC (Brain Injury Criterion)
       // Using standard critical angular velocities (rad/s)
-      double bric = imuProcessor.getBrIC(66.3, 66.3, 66.3);
-      Serial.print("BrIC: ");
-      Serial.println(bric);
+      // double bric = imuProcessor.getBrIC(66.3, 66.3, 66.3);
+      // Serial.print("BrIC: ");
+      // Serial.println(bric);
       
       // Determine concussion risk based on HIC and BrIC
       String concussionRisk = "Low";
-      if (hic > 1000 || bric > 0.85) {
+      if (hic > 1000) {
         concussionRisk = "High";
-      } else if (hic > 500 || bric > 0.65) {
+      } else if (hic > 500) {
         concussionRisk = "Medium";
       }
       Serial.print("Concussion Risk: ");
@@ -107,21 +125,18 @@ void loop() {
       double peakAcc = imuProcessor.getPeakLinearAcc();
       Serial.print("Peak Acceleration: ");
       Serial.print(peakAcc);
-      Serial.println(" m/s²");
+      Serial.println(" g");
       
       // Get and print velocities
-      double velBefore = imuProcessor.getVelocityBeforeImpact();
-      double velAfter = imuProcessor.getVelocityAfterImpact();
-      Serial.print("Velocity Before Impact: ");
-      Serial.print(velBefore);
-      Serial.println(" m/s");
-      Serial.print("Velocity After Impact: ");
-      Serial.print(velAfter);
-      Serial.println(" m/s");
+      Serial.print("Riding Velocity before Impact: ");
+      Serial.print(imuProcessor.getRidingVelocitybeforeImpact());
+      Serial.println(" km/h");
+      
+      Serial.print("Head Velocity on Impact: ");
+      Serial.print(imuProcessor.getHeadVelocityOnImpact());
+      Serial.println(" km/h");
       
       Serial.println("----------------------\n");
     }
   }
-
-  delay(1000);
 }

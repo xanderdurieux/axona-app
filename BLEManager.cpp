@@ -1,6 +1,6 @@
 #include "BLEManager.hpp"
 
-#define BLE_DEBUG
+// #define BLE_DEBUG
 
 /**
  * @brief Initialize the BLE module

@@ -23,25 +23,25 @@ int IMUProcessor::getImpactLevel() {
     if (imuDataBuffer.empty()) return 0;
     
     // Check if we're in cooldown period
-    if (impactDetected && (imuDataBuffer.back().timestamp - lastImpactTime < IMPACT_COOLDOWN)) {
+    if (impactDetected && (imuDataBuffer.back().timestamp - lastImpactTime) < IMPACT_COOLDOWN) {
         return 0;
     }
+
+    double lastAcc = calculateLinearAcceleration(imuDataBuffer.back()) / G_CONSTANT;
     
-    double peakAcc = getPeakLinearAcc();
-    
-    if (peakAcc >= IMPACT_THRESHOLD_SEVERE) {
+    if (lastAcc >= IMPACT_THRESHOLD_SEVERE) {
         impactDetected = true;
         lastImpactTime = imuDataBuffer.back().timestamp;
         return 4;
-    } else if (peakAcc >= IMPACT_THRESHOLD_HIGH) {
+    } else if (lastAcc >= IMPACT_THRESHOLD_HIGH) {
         impactDetected = true;
         lastImpactTime = imuDataBuffer.back().timestamp;
         return 3;
-    } else if (peakAcc >= IMPACT_THRESHOLD_MEDIUM) {
+    } else if (lastAcc >= IMPACT_THRESHOLD_MEDIUM) {
         impactDetected = true;
         lastImpactTime = imuDataBuffer.back().timestamp;
         return 2;
-    } else if (peakAcc >= IMPACT_THRESHOLD_LOW) {
+    } else if (lastAcc >= IMPACT_THRESHOLD_LOW) {
         impactDetected = true;
         lastImpactTime = imuDataBuffer.back().timestamp;
         return 1;
@@ -104,28 +104,34 @@ double IMUProcessor::getPeakLinearAcc() {
     return peakAcc;
 }
 
-double IMUProcessor::getVelocityBeforeImpact() {
+double IMUProcessor::getRidingVelocitybeforeImpact() {
+    if (imuDataBuffer.empty() || !impactDetected) return 0.0;
+    
+    // Get data from 5s before impact
+    std::vector<IMUData> window = getImpactWindow(lastImpactTime - 5000, 5000);
+    if (window.empty()) return 0.0;
+    
+    // Convert m/s to km/h (multiply by 3.6)
+    return integrateAcceleration(window) * 3.6;
+}
+
+double IMUProcessor::getHeadVelocityOnImpact() {
     if (imuDataBuffer.empty() || !impactDetected) return 0.0;
     
     // Get data from 100ms before impact
     std::vector<IMUData> window = getImpactWindow(lastImpactTime - 100, 100);
     if (window.empty()) return 0.0;
     
-    return integrateAcceleration(window);
-}
-
-double IMUProcessor::getVelocityAfterImpact() {
-    if (imuDataBuffer.empty() || !impactDetected) return 0.0;
-    
-    // Get data from 100ms after impact
-    std::vector<IMUData> window = getImpactWindow(lastImpactTime, 100);
-    if (window.empty()) return 0.0;
-    
-    return integrateAcceleration(window);
+    // Convert m/s to km/h (multiply by 3.6)
+    return integrateAcceleration(window) * 3.6;
 }
 
 double IMUProcessor::calculateLinearAcceleration(const IMUData& data) {
-    return sqrt(data.accX * data.accX + data.accY * data.accY + data.accZ * data.accZ);
+    // Calculate total acceleration magnitude
+    double totalAcc = sqrt(data.accX * data.accX + data.accY * data.accY + data.accZ * data.accZ);
+    
+    // Subtract gravity (1g) to get actual acceleration
+    return totalAcc - G_CONSTANT;
 }
 
 double IMUProcessor::calculateAngularVelocity(const IMUData& data) {
