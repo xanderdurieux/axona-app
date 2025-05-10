@@ -93,49 +93,36 @@ void loop() {
         digitalWrite(LED_PIN_5, LOW);
     }
       
-
-    // If impact detected (level > 0) and cooldown period has passed
     if (impactLevel > 0) {
-      Serial.println("\n--- Impact Detected ---");
+      Serial.println("--- Impact Detected ---");
       Serial.print("Impact Level: ");
       Serial.println(impactLevel);
 
       // Get and print HIC (Head Injury Criterion)
       double hic = imuProcessor.getHIC(15.0);  // 15ms window
-      Serial.print("HIC: ");
-      Serial.println(hic);
-      
-      // Get and print BrIC (Brain Injury Criterion)
-      // Using standard critical angular velocities (rad/s)
-      // double bric = imuProcessor.getBrIC(66.3, 66.3, 66.3);
-      // Serial.print("BrIC: ");
-      // Serial.println(bric);
-      
-      // Determine concussion risk based on HIC and BrIC
+      Serial.println("hicData||" + String(hic, 2));     
+
+      // Determine concussion risk based on HIC
       String concussionRisk = "Low";
       if (hic > 1000) {
         concussionRisk = "High";
       } else if (hic > 500) {
         concussionRisk = "Medium";
       }
-      Serial.print("Concussion Risk: ");
-      Serial.println(concussionRisk);
-      
-      // Get and print peak linear acceleration
+      Serial.println("concussionRisk||" + concussionRisk);
+
+      // Get peak linear acceleration
       double peakAcc = imuProcessor.getPeakLinearAcc();
-      Serial.print("Peak Acceleration: ");
-      Serial.print(peakAcc);
-      Serial.println(" g");
-      
-      // Get and print velocities
-      Serial.print("Riding Velocity before Impact: ");
-      Serial.print(imuProcessor.getRidingVelocitybeforeImpact());
-      Serial.println(" km/h");
-      
-      Serial.print("Head Velocity on Impact: ");
-      Serial.print(imuProcessor.getHeadVelocityOnImpact());
-      Serial.println(" km/h");
-      
+      Serial.println("peakAcc||" + String(peakAcc, 2) + " g");
+
+      // Get riding velocity before impact
+      double ridingVelocity = imuProcessor.getRidingVelocitybeforeImpact();
+      Serial.println("RidingVelocity||" + String(ridingVelocity, 2) + " km/h");      
+
+      // Get head velocity on impact
+      double headVelocity = imuProcessor.getHeadVelocityOnImpact();
+      Serial.println("HeadVelocity||" + String(headVelocity, 2) + " km/h");
+
       Serial.println("----------------------\n");
     }
   }
