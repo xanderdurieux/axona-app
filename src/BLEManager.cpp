@@ -1,5 +1,7 @@
 #include "BLEManager.hpp"
 
+// #define BLE_DEBUG
+
 /**
  * @brief Initialize the BLE module
  * 
@@ -8,11 +10,13 @@
  */
 bool BLEManager::begin() {
   bool success = BLE.begin();
+#ifdef BLE_DEBUG
   if (success) {
     Serial.println("BLE initialized");
   } else {
     Serial.println("Failed to initialize BLE!");
   }
+#endif
   return success;
 }
 
@@ -50,7 +54,9 @@ bool BLEManager::deviceAlreadyListed(BLEDevice device) {
  */
 void BLEManager::scanDevices() {
   deviceCount = 0;
+#ifdef BLE_DEBUG
   Serial.println("Scanning for BLE devices...");
+#endif
   BLE.scan();
   unsigned long startTime = millis();
   while (millis() - startTime < SCAN_TIME) {
@@ -62,7 +68,9 @@ void BLEManager::scanDevices() {
     }
   }
   BLE.stopScan();
+#ifdef BLE_DEBUG
   Serial.println("Scan complete.\n");
+#endif
 }
 
 /**
@@ -87,9 +95,12 @@ int BLEManager::getDeviceIndex(String address) {
  */
 void BLEManager::listDevices() {
   if (deviceCount == 0) {
+#ifdef BLE_DEBUG
     Serial.println("No devices found. Run the 'scan' command first.");
+#endif
     return;
   }
+  #ifdef BLE_DEBUG
   Serial.println("Available devices:");
   for (int i = 0; i < deviceCount; i++) {
     Serial.print("  [");
@@ -101,10 +112,10 @@ void BLEManager::listDevices() {
       Serial.print(scannedDevices[i].localName());
       Serial.print(")");
     }
-
     Serial.println();
   }
   Serial.println("Use command 'select <device index>' to connect.\n");
+  #endif
 }
 
 /**
@@ -116,17 +127,25 @@ void BLEManager::listDevices() {
  */
 bool BLEManager::selectDevice(int index) {
   if (index < 0 || index >= deviceCount) {
+#ifdef BLE_DEBUG
     Serial.println("Invalid device index.");
+#endif
     return false;
   }
+#ifdef BLE_DEBUG
   Serial.print("Connecting to device ");
   Serial.println(scannedDevices[index].address());
+#endif
   selectedDevice = scannedDevices[index];
   if (selectedDevice.connect()) {
+#ifdef BLE_DEBUG
     Serial.println("Connected successfully!");
+#endif
     return true;
   } else {
+#ifdef BLE_DEBUG
     Serial.println("Failed to connect.");
+#endif
     selectedDevice = BLEDevice(); // Clear selection
     return false;
   }
@@ -140,21 +159,30 @@ bool BLEManager::selectDevice(int index) {
  */
 void BLEManager::listServicesAndCharacteristics() {
   if (!selectedDevice) {
+#ifdef BLE_DEBUG
     Serial.println("No device connected.");
+#endif
     return;
   }
+#ifdef BLE_DEBUG
   Serial.println("Discovering services...");
+#endif
   if (!selectedDevice.discoverAttributes()) {
+#ifdef BLE_DEBUG
     Serial.println("Failed to discover attributes.");
+#endif
     return;
   }
   
   int serviceCount = selectedDevice.serviceCount();
   if (serviceCount == 0) {
+#ifdef BLE_DEBUG
     Serial.println("No services found.");
+#endif
     return;
   }
   
+#ifdef BLE_DEBUG
   for (int i = 0; i < serviceCount; i++) {
     BLEService service = selectedDevice.service(i);
     Serial.print("Service [");
@@ -180,6 +208,7 @@ void BLEManager::listServicesAndCharacteristics() {
   Serial.println("To subscribe, use: subscribe <service index> <characteristic index>");
   Serial.println("To read, use: read <service index> <characteristic index>");
   Serial.println("To write, use: write <service index> <characteristic index> <hex data>\n");
+#endif
 }
 
 /**
@@ -192,38 +221,52 @@ void BLEManager::listServicesAndCharacteristics() {
  */
 bool BLEManager::subscribeCharacteristic(int sIndex, int cIndex) {
   if (!selectedDevice) {
+#ifdef BLE_DEBUG
     Serial.println("No device connected.");
+#endif
     return false;
   }
   if (!selectedDevice.discoverAttributes()) {
-    Serial.println("Service discovery failed.");
+#ifdef BLE_DEBUG
+      Serial.println("Service discovery failed.");
+#endif
     return false;
   }
   int svcCount = selectedDevice.serviceCount();
   if (sIndex < 0 || sIndex >= svcCount) {
+#ifdef BLE_DEBUG
     Serial.println("Invalid service index.");
+#endif
     return false;
   }
   BLEService service = selectedDevice.service(sIndex);
   int charCount = service.characteristicCount();
   if (cIndex < 0 || cIndex >= charCount) {
+#ifdef BLE_DEBUG
     Serial.println("Invalid characteristic index.");
+#endif
     return false;
   }
   selectedCharacteristic = service.characteristic(cIndex);
   if (selectedCharacteristic.canSubscribe()) {
     if (selectedCharacteristic.subscribe()) {
       selectedCharacteristic.setEventHandler(BLEUpdated, notificationCallback);
+#ifdef BLE_DEBUG
       Serial.print("Subscribed to characteristic ");
       Serial.println(selectedCharacteristic.uuid());
-      isSubscribed = true;
+#endif
+      subscribed = true;
       return true;
     } else {
+#ifdef BLE_DEBUG
       Serial.println("Subscription failed.");
+#endif
       return false;
     }
   } else {
+#ifdef BLE_DEBUG
     Serial.println("Characteristic does not support notifications.");
+#endif
     return false;
   }
 }
@@ -238,38 +281,52 @@ bool BLEManager::subscribeCharacteristic(int sIndex, int cIndex) {
  */
 bool BLEManager::unsubscribeCharacteristic(int sIndex, int cIndex) {
   if (!selectedDevice) {
+#ifdef BLE_DEBUG
     Serial.println("No device connected.");
+#endif
     return false;
   }
   if (!selectedDevice.discoverAttributes()) {
+#ifdef BLE_DEBUG
     Serial.println("Service discovery failed.");
+#endif
     return false;
   }
   int svcCount = selectedDevice.serviceCount();
   if (sIndex < 0 || sIndex >= svcCount) {
+#ifdef BLE_DEBUG
     Serial.println("Invalid service index.");
+#endif
     return false;
   }
   BLEService service = selectedDevice.service(sIndex);
   int charCount = service.characteristicCount();
   if (cIndex < 0 || cIndex >= charCount) {
+#ifdef BLE_DEBUG
     Serial.println("Invalid characteristic index.");
+#endif
     return false;
   }
   BLECharacteristic characteristic = service.characteristic(cIndex);
   if (characteristic.canSubscribe()) {
     if (characteristic.unsubscribe()) {
+#ifdef BLE_DEBUG
       Serial.print("Unsubscribed from characteristic ");
       Serial.println(characteristic.uuid());
-      isSubscribed = false;
+#endif
+      subscribed = false;
       IMUProcessor::getInstance().clearData();
       return true;
     } else {
+#ifdef BLE_DEBUG
       Serial.println("Unsubscribe failed.");
+#endif
       return false;
     }
   } else {
+#ifdef BLE_DEBUG
     Serial.println("Characteristic does not support notifications.");
+#endif
     return false;
   }
 }
@@ -284,27 +341,36 @@ bool BLEManager::unsubscribeCharacteristic(int sIndex, int cIndex) {
  */
 bool BLEManager::readCharacteristic(int sIndex, int cIndex) {
   if (!selectedDevice) {
+#ifdef BLE_DEBUG
     Serial.println("No device connected.");
+#endif
     return false;
   }
   if (!selectedDevice.discoverAttributes()) {
+#ifdef BLE_DEBUG
     Serial.println("Service discovery failed.");
+#endif
     return false;
   }
   int svcCount = selectedDevice.serviceCount();
   if (sIndex < 0 || sIndex >= svcCount) {
+#ifdef BLE_DEBUG
     Serial.println("Invalid service index.");
+#endif
     return false;
   }
   BLEService service = selectedDevice.service(sIndex);
   int charCount = service.characteristicCount();
   if (cIndex < 0 || cIndex >= charCount) {
+#ifdef BLE_DEBUG
     Serial.println("Invalid characteristic index.");
+#endif
     return false;
   }
   BLECharacteristic characteristic = service.characteristic(cIndex);
   if (characteristic.canRead()) {
     if (characteristic.read()) {
+#ifdef BLE_DEBUG
       Serial.print("Read from ");
       Serial.print(characteristic.uuid());
       Serial.print(": ");
@@ -315,13 +381,18 @@ bool BLEManager::readCharacteristic(int sIndex, int cIndex) {
         Serial.print(" ");
       }
       Serial.println();
+#endif
       return true;
     } else {
+#ifdef BLE_DEBUG
       Serial.println("Read failed.");
+#endif
       return false;
     }
   } else {
+#ifdef BLE_DEBUG
     Serial.println("Characteristic is not readable.");
+#endif
     return false;
   }
 }
@@ -338,27 +409,36 @@ bool BLEManager::readCharacteristic(int sIndex, int cIndex) {
  */
 bool BLEManager::writeCharacteristic(int sIndex, int cIndex, const uint8_t *data, int length) {
   if (!selectedDevice) {
+#ifdef BLE_DEBUG
     Serial.println("No device connected.");
+#endif
     return false;
   }
   if (!selectedDevice.discoverAttributes()) {
+#ifdef BLE_DEBUG
     Serial.println("Service discovery failed.");
+#endif
     return false;
   }
   int svcCount = selectedDevice.serviceCount();
   if (sIndex < 0 || sIndex >= svcCount) {
+#ifdef BLE_DEBUG
     Serial.println("Invalid service index.");
+#endif
     return false;
   }
   BLEService service = selectedDevice.service(sIndex);
   int charCount = service.characteristicCount();
   if (cIndex < 0 || cIndex >= charCount) {
+#ifdef BLE_DEBUG
     Serial.println("Invalid characteristic index.");
+#endif
     return false;
   }
   BLECharacteristic characteristic = service.characteristic(cIndex);
   if (characteristic.canWrite()) {
     if (characteristic.writeValue(data, length)) {
+#ifdef BLE_DEBUG
       Serial.print("Wrote ");
       for (int i = 0; i < length; i++) {
         Serial.print(data[i], HEX);
@@ -367,13 +447,18 @@ bool BLEManager::writeCharacteristic(int sIndex, int cIndex, const uint8_t *data
       Serial.print("to characteristic ");
       Serial.print(characteristic.uuid());
       Serial.println(".");
+#endif
       return true;
     } else {
+#ifdef BLE_DEBUG
       Serial.println("Write failed.");
+#endif
       return false;
     }
   } else {
+#ifdef BLE_DEBUG
     Serial.println("Characteristic is not writable.");
+#endif
     return false;
   }
 }
@@ -386,10 +471,14 @@ bool BLEManager::writeCharacteristic(int sIndex, int cIndex, const uint8_t *data
 void BLEManager::disconnect() {
   if (selectedDevice) {
     selectedDevice.disconnect();
+#ifdef BLE_DEBUG
     Serial.println("Disconnected.");
+#endif
     selectedDevice = BLEDevice();
+#ifdef BLE_DEBUG
   } else {
     Serial.println("No device is currently connected.");
+#endif
   }
 }
 
@@ -403,16 +492,19 @@ void BLEManager::disconnect() {
  * @param characteristic The characteristic that was updated
  */
 void BLEManager::notificationCallback(BLEDevice device, BLECharacteristic characteristic) {
-
   int length = characteristic.valueLength();
   const uint8_t* data = characteristic.value();
 
   if (length < 6) {
+#ifdef BLE_DEBUG
     Serial.println("Data too short.");
+#endif
     return;
   }
   if (length > 150) {
+#ifdef BLE_DEBUG
     Serial.println("Data length exceeds maximum limit.");
+#endif
     return;
   }
 
@@ -428,6 +520,14 @@ void BLEManager::notificationCallback(BLEDevice device, BLECharacteristic charac
   
   IMUProcessor& processor = IMUProcessor::getInstance();
 
+// #ifdef BLE_DEBUG
+//   Serial.print("IMU Data - Timestamp: ");
+//   Serial.print(timestamp);
+//   Serial.print(" Sample Rate: ");
+//   Serial.print(sampleRate);
+//   Serial.print(" Hz\n");
+// #endif
+
   for (int i = 0; i < numRows; ++i) {
     uint32_t row_timestamp = timestamp + int(i * 1000 / sampleRate);
 
@@ -438,6 +538,22 @@ void BLEManager::notificationCallback(BLEDevice device, BLECharacteristic charac
     float gyroX = dv.getFloat32(6 + numRows * sensorDataSize + i * sensorDataSize);
     float gyroY = dv.getFloat32(6 + numRows * sensorDataSize + i * sensorDataSize + 4);
     float gyroZ = dv.getFloat32(6 + numRows * sensorDataSize + i * sensorDataSize + 8);
+
+#ifdef BLE_DEBUG
+    // Format for serial plotter
+    Serial.print("accX:");
+    Serial.print(accX);
+    Serial.print(" accY:");
+    Serial.print(accY);
+    Serial.print(" accZ:");
+    Serial.print(accZ);
+    Serial.print(" gyroX:");
+    Serial.print(gyroX);
+    Serial.print(" gyroY:");
+    Serial.print(gyroY);
+    Serial.print(" gyroZ:");
+    Serial.println(gyroZ);
+#endif
 
     processor.processData(accX, accY, accZ, gyroX, gyroY, gyroZ, row_timestamp);
   }

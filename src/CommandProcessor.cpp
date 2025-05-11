@@ -184,8 +184,9 @@ bool CommandProcessor::movesenseHandler(int argc, char** argv) {
   }
   else if (subcommand == "subscribe") {
     String sampleRate = argv[1];
-    const uint8_t subscribeCommand[] = {1, 99, '/', 'M', 'e', 'a', 's', '/', 'I', 'M', 'U', '6', '/', '5', '2'};
-    bleManager->writeCharacteristic(serviceIndex, writeCharIndex, subscribeCommand, sizeof(subscribeCommand));
+    const uint8_t subscribeCommand[] = {1, 99, '/', 'M', 'e', 'a', 's', '/', 'I', 'M', 'U', '6', '/', sampleRate.charAt(0), sampleRate.charAt(1), sampleRate.charAt(2), sampleRate.charAt(3)};
+    int commandLength = 13 + sampleRate.length();
+    bleManager->writeCharacteristic(serviceIndex, writeCharIndex, subscribeCommand, commandLength);
     bleManager->subscribeCharacteristic(serviceIndex, notifyCharIndex);
     Serial.println("Subscribed to IMU sensor");
   }
