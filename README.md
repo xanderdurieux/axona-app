@@ -12,44 +12,22 @@ A real-time impact detection and analysis system for cyclists, designed to monit
   - Riding Velocity before Impact
   - Head Velocity on Impact
 - **Visual Feedback**: LED indicators for impact severity
-- **BLE Connectivity**: Wireless communication with IMU sensors
+- **BLE Connectivity**: Wireless communication with Movesense Flash Sensor
 
 ## Hardware Requirements
 
-- Arduino-compatible board
-- IMU sensor with BLE connectivity
+- Arduino Nano 33 BLE board
+- Movesense Flash sensor for IMU measurements
 - 5 LEDs for impact level indication
 - Power supply
 
 ## Pin Configuration
 
-- LED_PIN_1: Pin 11
-- LED_PIN_2: Pin 9
-- LED_PIN_3: Pin 7
-- LED_PIN_4: Pin 5
-- LED_PIN_5: Pin 3
-
-## Impact Thresholds
-
-The system uses the following acceleration thresholds (in g):
-- Low Impact: 2.5g
-- Medium Impact: 5.0g
-- High Impact: 7.5g
-- Severe Impact: 10.0g
-
-## Velocity Calculation
-
-The system calculates two types of velocities:
-
-1. **Riding Velocity**:
-   - Calculated over a 5-second window before impact
-   - Uses high-pass filtering to remove drift
-   - Returns velocity in km/h
-
-2. **Head Impact Velocity**:
-   - Calculated over a 100ms window before impact
-   - Uses direct integration for precise impact measurement
-   - Returns velocity in km/h
+- LED_PIN_1: D11
+- LED_PIN_2: D9
+- LED_PIN_3: D7
+- LED_PIN_4: D5
+- LED_PIN_5: D3
 
 ## Installation
 
@@ -79,7 +57,7 @@ git clone https://github.com/xanderdurieux/axona-app.git
    - Impact metrics will be calculated and displayed
    - Data can be monitored through Serial output
 
-## Impact Metrics
+## Calculated Metrics
 
 ### HIC (Head Injury Criterion)
 - Calculated over a 15ms window
@@ -87,6 +65,28 @@ git clone https://github.com/xanderdurieux/axona-app.git
   - Low: < 500
   - Medium: 500-1000
   - High: > 1000
+
+### Impact Thresholds
+
+The system uses the following acceleration thresholds (in g):
+- Low Impact: 2.5g
+- Medium Impact: 5.0g
+- High Impact: 7.5g
+- Severe Impact: 10.0g
+
+### Velocity Calculation
+
+The system calculates two types of velocities:
+
+1. **Riding Velocity**:
+   - Calculated over a 5-second window before impact
+   - Uses high-pass filtering to remove drift
+   - Returns velocity in km/h
+
+2. **Head Impact Velocity**:
+   - Calculated over a 100ms window before impact
+   - Uses direct integration for precise impact measurement
+   - Returns velocity in km/h
 
 ## Acknowledgments
 
