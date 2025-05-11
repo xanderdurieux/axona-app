@@ -81,7 +81,7 @@ private:
     float biasAccX = 0.0f, biasAccY = 0.0f, biasAccZ = 0.0f;
     float biasGyroX = 0.0f, biasGyroY = 0.0f, biasGyroZ = 0.0f;
     bool biasCalculated = false;
-    const int BIAS_CALIBRATION_SAMPLES = 50;
+    const int BIAS_CALIBRATION_SAMPLES = 250;
 
     // Helper methods
     void updateOrientation(const IMUData& data, float dt);
