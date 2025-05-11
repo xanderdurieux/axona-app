@@ -8,6 +8,8 @@ void IMUProcessor::clearData() {
     lastImpactTime = 0;
     biasCalculated = false;
     orientation = Quaternion(); // Reset orientation
+    biasAccX = biasAccY = biasAccZ = 0.0f;
+    biasGyroX = biasGyroY = biasGyroZ = 0.0f;
 }
 
 
@@ -85,7 +87,7 @@ Quaternion IMUProcessor::estimateOrientationFromAccel(const IMUData& data) {
     float norm = sqrt(ax*ax + ay*ay + az*az);
     
     // Only use accelerometer if the magnitude is close to 1g
-    if (std::abs(norm - G_CONSTANT) > 0.5) {
+    if (abs(norm - G_CONSTANT) > 0.5) {
         return Quaternion(); // Return identity quaternion if acceleration is not reliable
     }
     
@@ -141,7 +143,7 @@ void IMUProcessor::updateOrientation(const IMUData& data, float dt) {
     );
     
     // Reduce gyroscope weight when acceleration is close to 1g
-    if (std::abs(accelMagnitude - G_CONSTANT) < 0.5) {
+    if (abs(accelMagnitude - G_CONSTANT) < 0.5) {
         alpha = 0.8f;  // Give more weight to accelerometer when stable
     }
     
