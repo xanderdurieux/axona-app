@@ -2,216 +2,162 @@
 
 IMUProcessor* IMUProcessor::instance = nullptr;
 
-void IMUProcessor::processData(float accX, float accY, float accZ,
-                               float gyroX, float gyroY, float gyroZ,
-                               uint32_t timestamp) {
-    IMUData processedData = { timestamp, accX, accY, accZ, gyroX, gyroY, gyroZ };
-    imuDataBuffer.push_back(processedData);
-    if (imuDataBuffer.size() > MAX_BUFFER_SIZE) {
-        imuDataBuffer.pop_front();
-    }
-}
-
 void IMUProcessor::clearData() {
     imuDataBuffer.clear();
     impactDetected = false;
     lastImpactTime = 0;
+    biasCalculated = false;
+    orientation = Quaternion(); // Reset orientation
 }
 
-int IMUProcessor::getImpactLevel() {
-    if (imuDataBuffer.empty()) return 0;
-    
-    // Check if we're in cooldown period
-    if (impactDetected && (imuDataBuffer.back().timestamp - lastImpactTime) < IMPACT_COOLDOWN) {
-        return 0;
-    }
 
-    double lastAcc = calculateLinearAcceleration(imuDataBuffer.back()) / G_CONSTANT;
+void IMUProcessor::processData(float accX, float accY, float accZ, 
+                             float gyroX, float gyroY, float gyroZ,
+                             uint32_t timestamp) {
+    IMUData data;
+    data.timestamp = timestamp;
+    data.accX = accX;
+    data.accY = accY;
+    data.accZ = accZ;
+    data.gyroX = gyroX;
+    data.gyroY = gyroY;
+    data.gyroZ = gyroZ;
     
-    if (lastAcc >= IMPACT_THRESHOLD_SEVERE) {
+    // Calculate time delta
+    float dt = 0.0f;
+    if (!imuDataBuffer.empty()) {
+        dt = (timestamp - imuDataBuffer.back().timestamp) / 1000.0f; // Convert to seconds
+    }
+    
+    // Update orientation using gyroscope data
+    updateOrientation(data, dt);
+    
+    // Get gravity vector in sensor frame
+    float gx = 0.0f, gy = 0.0f, gz = G_CONSTANT;
+    rotateGravity(orientation, gx, gy, gz);
+    
+    // Calculate velocity components
+    if (!imuDataBuffer.empty()) {
+        data.velX = imuDataBuffer.back().velX + (data.accX - biasAccX - gx) * dt;
+        data.velY = imuDataBuffer.back().velY + (data.accY - biasAccY - gy) * dt;
+        data.velZ = imuDataBuffer.back().velZ + (data.accZ - biasAccZ - gz) * dt;
+    } else {
+        data.velX = data.velY = data.velZ = 0.0f;
+    }
+    
+    // Update bias if not calculated yet
+    if (!biasCalculated) {
+        updateBias(data);
+    }
+    
+    // Add to buffer
+    imuDataBuffer.push_back(data);
+    if (imuDataBuffer.size() > MAX_BUFFER_SIZE) {
+        imuDataBuffer.pop_front();
+    }
+    
+    // Check for impact
+    double linearAcc = calculateLinearAcceleration(data);
+    if (linearAcc > IMPACT_THRESHOLD_LOW && 
+        (timestamp - lastImpactTime) > IMPACT_COOLDOWN) {
         impactDetected = true;
-        lastImpactTime = imuDataBuffer.back().timestamp;
-        return 4;
-    } else if (lastAcc >= IMPACT_THRESHOLD_HIGH) {
-        impactDetected = true;
-        lastImpactTime = imuDataBuffer.back().timestamp;
-        return 3;
-    } else if (lastAcc >= IMPACT_THRESHOLD_MEDIUM) {
-        impactDetected = true;
-        lastImpactTime = imuDataBuffer.back().timestamp;
-        return 2;
-    } else if (lastAcc >= IMPACT_THRESHOLD_LOW) {
-        impactDetected = true;
-        lastImpactTime = imuDataBuffer.back().timestamp;
-        return 1;
+        lastImpactTime = timestamp;
     }
-    
-    return 0;
 }
 
-double IMUProcessor::getHIC(double window_ms) {
-    if (imuDataBuffer.empty() || !impactDetected) return 0.0;
+void IMUProcessor::updateOrientation(const IMUData& data, float dt) {
+    // Convert gyroscope data to quaternion derivative
+    Quaternion qDot(
+        0.0,
+        data.gyroX * dt / 2.0,
+        data.gyroY * dt / 2.0,
+        data.gyroZ * dt / 2.0
+    );
     
-    std::vector<IMUData> window = getImpactWindow(lastImpactTime, window_ms);
-    if (window.empty()) return 0.0;
-    
-    double maxHIC = 0.0;
-    double dt = window_ms / window.size();
-    
-    for (size_t i = 0; i < window.size(); ++i) {
-        double sum = 0.0;
-        for (size_t j = i; j < window.size(); ++j) {
-            double acc = calculateLinearAcceleration(window[j]) / G_CONSTANT; // Convert to g
-            sum += acc * dt;
-            double t = (j - i + 1) * dt / 1000.0; // Convert to seconds
-            double hic = pow(sum, 2.5) * t;
-            maxHIC = std::max(maxHIC, hic);
-        }
-    }
-    
-    return maxHIC;
+    // Update orientation quaternion
+    orientation = orientation * qDot;
+    orientation.normalize();
 }
 
-double IMUProcessor::getBrIC(double crit_x, double crit_y, double crit_z) {
-    if (imuDataBuffer.empty() || !impactDetected) return 0.0;
+void IMUProcessor::rotateGravity(const Quaternion& q, float& gx, float& gy, float& gz) {
+    // Rotate gravity vector using quaternion
+    float gx_orig = gx, gy_orig = gy, gz_orig = gz;
     
-    std::vector<IMUData> window = getImpactWindow(lastImpactTime, 15.0); // Use 15ms window for BrIC
-    if (window.empty()) return 0.0;
-    
-    double max_omega_x = 0.0, max_omega_y = 0.0, max_omega_z = 0.0;
-    
-    for (const auto& data : window) {
-        max_omega_x = std::max(max_omega_x, static_cast<double>(data.gyroX > 0 ? data.gyroX : -data.gyroX));
-        max_omega_y = std::max(max_omega_y, static_cast<double>(data.gyroY > 0 ? data.gyroY : -data.gyroY));
-        max_omega_z = std::max(max_omega_z, static_cast<double>(data.gyroZ > 0 ? data.gyroZ : -data.gyroZ));
-    }
-    
-    double bric = sqrt(pow(max_omega_x/crit_x, 2) + 
-                      pow(max_omega_y/crit_y, 2) + 
-                      pow(max_omega_z/crit_z, 2));
-    
-    return bric;
+    gx = (1 - 2*q.y*q.y - 2*q.z*q.z) * gx_orig +
+         (2*q.x*q.y - 2*q.w*q.z) * gy_orig +
+         (2*q.x*q.z + 2*q.w*q.y) * gz_orig;
+         
+    gy = (2*q.x*q.y + 2*q.w*q.z) * gx_orig +
+         (1 - 2*q.x*q.x - 2*q.z*q.z) * gy_orig +
+         (2*q.y*q.z - 2*q.w*q.x) * gz_orig;
+         
+    gz = (2*q.x*q.z - 2*q.w*q.y) * gx_orig +
+         (2*q.y*q.z + 2*q.w*q.x) * gy_orig +
+         (1 - 2*q.x*q.x - 2*q.y*q.y) * gz_orig;
 }
 
-double IMUProcessor::getPeakLinearAcc() {
-    if (imuDataBuffer.empty()) return 0.0;
+void IMUProcessor::updateBias(const IMUData& data) {
+    static int sampleCount = 0;
     
-    double peakAcc = 0.0;
-    for (const auto& data : imuDataBuffer) {
-        peakAcc = std::max(peakAcc, calculateLinearAcceleration(data) / G_CONSTANT); // Convert to g
-    }
-    return peakAcc;
-}
-
-double IMUProcessor::getRidingVelocitybeforeImpact() {
-    if (imuDataBuffer.empty() || !impactDetected) return 0.0;
+    biasAccX += data.accX;
+    biasAccY += data.accY;
+    biasAccZ += data.accZ;
+    biasGyroX += data.gyroX;
+    biasGyroY += data.gyroY;
+    biasGyroZ += data.gyroZ;
     
-    // Get data from 5s before impact
-    std::vector<IMUData> window = getImpactWindow(lastImpactTime - 5000, 5000);
-    if (window.size() < 2) return 0.0;
+    sampleCount++;
     
-    double velocityX = 0.0, velocityY = 0.0, velocityZ = 0.0;
-    double biasX = 0.0, biasY = 0.0, biasZ = 0.0;
-    const int CALIBRATION_SAMPLES = 10;
-    
-    // Calculate initial bias for each axis
-    for (int i = 0; i < std::min(CALIBRATION_SAMPLES, (int)window.size()); i++) {
-        biasX += window[i].accX;
-        biasY += window[i].accY;
-        biasZ += window[i].accZ;
-    }
-    biasX /= CALIBRATION_SAMPLES;
-    biasY /= CALIBRATION_SAMPLES;
-    biasZ /= CALIBRATION_SAMPLES;
-    
-    // Apply high-pass filter to remove drift
-    double alpha = 0.1; // Filter coefficient
-    double filteredAccX = 0.0, filteredAccY = 0.0, filteredAccZ = 0.0;
-    
-    for (size_t i = 1; i < window.size(); ++i) {
-        double dt = (window[i].timestamp - window[i-1].timestamp) / 1000.0; // Convert to seconds
+    if (sampleCount >= BIAS_CALIBRATION_SAMPLES) {
+        biasAccX /= BIAS_CALIBRATION_SAMPLES;
+        biasAccY /= BIAS_CALIBRATION_SAMPLES;
+        biasAccZ /= BIAS_CALIBRATION_SAMPLES;
+        biasGyroX /= BIAS_CALIBRATION_SAMPLES;
+        biasGyroY /= BIAS_CALIBRATION_SAMPLES;
+        biasGyroZ /= BIAS_CALIBRATION_SAMPLES;
         
-        // Calculate acceleration for each axis
-        double accX = window[i-1].accX - biasX;
-        double accY = window[i-1].accY - biasY;
-        double accZ = window[i-1].accZ - biasZ;
+        // Adjust Z bias to account for gravity
+        biasAccZ -= G_CONSTANT;
         
-        // Apply high-pass filter to each axis
-        filteredAccX = alpha * (filteredAccX + accX * dt);
-        filteredAccY = alpha * (filteredAccY + accY * dt);
-        filteredAccZ = alpha * (filteredAccZ + accZ * dt);
-        
-        // Integrate filtered acceleration
-        velocityX += filteredAccX * dt;
-        velocityY += filteredAccY * dt;
-        velocityZ += filteredAccZ * dt;
+        biasCalculated = true;
     }
-    
-    // Return magnitude of velocity in km/h
-    return sqrt(velocityX * velocityX + velocityY * velocityY + velocityZ * velocityZ) * 3.6;
-}
-
-double IMUProcessor::getHeadVelocityOnImpact() {
-    if (imuDataBuffer.empty() || !impactDetected) return 0.0;
-    
-    // Get data from 100ms before impact
-    std::vector<IMUData> window = getImpactWindow(lastImpactTime - 100, 100);
-    if (window.size() < 2) return 0.0;
-    
-    double velocityX = 0.0, velocityY = 0.0, velocityZ = 0.0;
-    double biasX = 0.0, biasY = 0.0, biasZ = 0.0;
-    const int CALIBRATION_SAMPLES = 10;
-    
-    // Calculate initial bias for each axis
-    for (int i = 0; i < std::min(CALIBRATION_SAMPLES, (int)window.size()); i++) {
-        biasX += window[i].accX;
-        biasY += window[i].accY;
-        biasZ += window[i].accZ;
-    }
-    biasX /= CALIBRATION_SAMPLES;
-    biasY /= CALIBRATION_SAMPLES;
-    biasZ /= CALIBRATION_SAMPLES;
-    
-    // Direct integration for impact velocity
-    for (size_t i = 1; i < window.size(); ++i) {
-        double dt = (window[i].timestamp - window[i-1].timestamp) / 1000.0;
-        
-        // Calculate acceleration for each axis
-        double accX = window[i-1].accX - biasX;
-        double accY = window[i-1].accY - biasY;
-        double accZ = window[i-1].accZ - biasZ;
-        
-        // Direct integration
-        velocityX += accX * dt;
-        velocityY += accY * dt;
-        velocityZ += accZ * dt;
-    }
-    
-    // Return magnitude of velocity in km/h
-    return sqrt(velocityX * velocityX + velocityY * velocityY + velocityZ * velocityZ) * 3.6;
 }
 
 double IMUProcessor::calculateLinearAcceleration(const IMUData& data) {
-    // Calculate total acceleration magnitude
-    double totalAcc = sqrt(data.accX * data.accX + data.accY * data.accY + data.accZ * data.accZ);
+    // Calculate linear acceleration by removing gravity and bias
+    float ax = data.accX - biasAccX;
+    float ay = data.accY - biasAccY;
+    float az = data.accZ - biasAccZ;
     
-    // Subtract gravity (1g) to get actual acceleration
-    return totalAcc - G_CONSTANT;
+    // Get gravity vector in sensor frame
+    float gx = 0.0f, gy = 0.0f, gz = G_CONSTANT;
+    rotateGravity(orientation, gx, gy, gz);
+    
+    // Remove gravity
+    ax -= gx;
+    ay -= gy;
+    az -= gz;
+    
+    return sqrt(ax*ax + ay*ay + az*az);
 }
 
 double IMUProcessor::calculateAngularVelocity(const IMUData& data) {
-    return sqrt(data.gyroX * data.gyroX + data.gyroY * data.gyroY + data.gyroZ * data.gyroZ);
+    float wx = data.gyroX - biasGyroX;
+    float wy = data.gyroY - biasGyroY;
+    float wz = data.gyroZ - biasGyroZ;
+    return sqrt(wx*wx + wy*wy + wz*wz);
+}
+
+double IMUProcessor::calculateVelocity(const IMUData& data) {
+    return sqrt(data.velX*data.velX + data.velY*data.velY + data.velZ*data.velZ);
 }
 
 std::vector<IMUData> IMUProcessor::getImpactWindow(uint32_t impactTime, double window_ms) {
     std::vector<IMUData> window;
-    if (imuDataBuffer.empty()) return window;
-    
-    uint32_t startTime = impactTime - window_ms;
-    uint32_t endTime = impactTime + window_ms;
+    uint32_t startTime = impactTime - static_cast<uint32_t>(window_ms);
     
     for (const auto& data : imuDataBuffer) {
-        if (data.timestamp >= startTime && data.timestamp <= endTime) {
+        if (data.timestamp >= startTime && data.timestamp <= impactTime) {
             window.push_back(data);
         }
     }
@@ -219,3 +165,85 @@ std::vector<IMUData> IMUProcessor::getImpactWindow(uint32_t impactTime, double w
     return window;
 }
 
+int IMUProcessor::getImpactLevel() {
+    if (imuDataBuffer.empty()) return 0;
+    
+    double linearAcc = calculateLinearAcceleration(imuDataBuffer.back());
+    
+    if (linearAcc >= IMPACT_THRESHOLD_SEVERE) return 4;
+    if (linearAcc >= IMPACT_THRESHOLD_HIGH) return 3;
+    if (linearAcc >= IMPACT_THRESHOLD_MEDIUM) return 2;
+    if (linearAcc >= IMPACT_THRESHOLD_LOW) return 1;
+    return 0;
+}
+
+double IMUProcessor::getHIC(double window_ms) {
+    if (imuDataBuffer.empty()) return 0.0;
+    
+    auto window = getImpactWindow(imuDataBuffer.back().timestamp, window_ms);
+    if (window.empty()) return 0.0;
+    
+    double maxHIC = 0.0;
+    double window_s = window_ms / 1000.0;  // Convert to seconds
+    
+    for (size_t i = 0; i < window.size(); ++i) {
+        for (size_t j = i + 1; j < window.size(); ++j) {
+            double dt = (window[j].timestamp - window[i].timestamp) / 1000.0;  // Convert to seconds
+            if (dt > window_s) break;
+            
+            // Calculate average acceleration over the interval
+            double sumAcc = 0.0;
+            for (size_t k = i; k <= j; ++k) {
+                // Convert linear acceleration to g's
+                sumAcc += calculateLinearAcceleration(window[k]) / G_CONSTANT;
+            }
+            double avgAcc = sumAcc / (j - i + 1);
+            
+            // Calculate HIC using the standard formula
+            double hic = dt * pow(avgAcc, 2.5);
+            maxHIC = std::max(maxHIC, hic);
+        }
+    }
+    
+    return maxHIC;
+}
+
+double IMUProcessor::getAccOnImpact() {
+    if (imuDataBuffer.empty()) return 0.0;
+    if (!impactDetected) return 0.0;
+    
+    for (const auto& data : imuDataBuffer) {
+        if (data.timestamp == lastImpactTime) {
+            return calculateLinearAcceleration(data);
+        }
+    }
+    return 0.0;
+}
+
+double IMUProcessor::getRidingVelocitybeforeImpact() {
+    if (imuDataBuffer.empty()) return 0.0;
+    
+    // Get average velocity magnitude of 5s to 1s before impact
+    std::vector<IMUData> velocityWindow = getImpactWindow(lastImpactTime - 5000, 4000);
+    if (velocityWindow.empty()) return 0.0;
+    
+    double sumVelocity = 0.0;
+    for (const auto& data : velocityWindow) {
+        sumVelocity += calculateVelocity(data);
+    }
+    return sumVelocity / velocityWindow.size();
+}
+
+double IMUProcessor::getHeadVelocityOnImpact() {
+    if (imuDataBuffer.empty()) return 0.0;
+    
+    // Get average velocity of 100ms before impact
+    std::vector<IMUData> velocityWindow = getImpactWindow(lastImpactTime - 100, 100);
+    if (velocityWindow.empty()) return 0.0;
+    
+    double sumVelocity = 0.0;
+    for (const auto& data : velocityWindow) {
+        sumVelocity += calculateVelocity(data);
+    }
+    return sumVelocity / velocityWindow.size();
+}
