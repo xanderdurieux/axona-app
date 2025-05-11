@@ -36,11 +36,23 @@ void IMUProcessor::processData(float accX, float accY, float accZ,
     float gx = 0.0f, gy = 0.0f, gz = G_CONSTANT;
     rotateGravity(orientation, gx, gy, gz);
     
-    // Calculate velocity components
+    // Calculate velocity components using trapezoidal integration
     if (!imuDataBuffer.empty()) {
-        data.velX = imuDataBuffer.back().velX + (data.accX - biasAccX - gx) * dt;
-        data.velY = imuDataBuffer.back().velY + (data.accY - biasAccY - gy) * dt;
-        data.velZ = imuDataBuffer.back().velZ + (data.accZ - biasAccZ - gz) * dt;
+        const IMUData& prev = imuDataBuffer.back();
+        
+        // Calculate acceleration components for both current and previous sample
+        float currAccX = data.accX - biasAccX - gx;
+        float currAccY = data.accY - biasAccY - gy;
+        float currAccZ = data.accZ - biasAccZ - gz;
+        
+        float prevAccX = prev.accX - biasAccX - gx;
+        float prevAccY = prev.accY - biasAccY - gy;
+        float prevAccZ = prev.accZ - biasAccZ - gz;
+        
+        // Trapezoidal integration
+        data.velX = prev.velX + (currAccX + prevAccX) * dt / 2.0f;
+        data.velY = prev.velY + (currAccY + prevAccY) * dt / 2.0f;
+        data.velZ = prev.velZ + (currAccZ + prevAccZ) * dt / 2.0f;
     } else {
         data.velX = data.velY = data.velZ = 0.0f;
     }
@@ -65,17 +77,81 @@ void IMUProcessor::processData(float accX, float accY, float accZ,
     }
 }
 
+Quaternion IMUProcessor::estimateOrientationFromAccel(const IMUData& data) {
+    // Normalize acceleration vector
+    float ax = data.accX - biasAccX;
+    float ay = data.accY - biasAccY;
+    float az = data.accZ - biasAccZ;
+    float norm = sqrt(ax*ax + ay*ay + az*az);
+    
+    // Only use accelerometer if the magnitude is close to 1g
+    if (std::abs(norm - G_CONSTANT) > 0.5) {
+        return Quaternion(); // Return identity quaternion if acceleration is not reliable
+    }
+    
+    ax /= norm;
+    ay /= norm;
+    az /= norm;
+    
+    // Calculate roll and pitch from accelerometer
+    float roll = atan2(ay, az);
+    float pitch = atan2(-ax, sqrt(ay*ay + az*az));
+    
+    // Convert to quaternion
+    float cy = cos(pitch * 0.5);
+    float sy = sin(pitch * 0.5);
+    float cr = cos(roll * 0.5);
+    float sr = sin(roll * 0.5);
+    
+    return Quaternion(
+        cy * cr,  // w
+        cy * sr,  // x
+        sy * cr,  // y
+        sy * sr   // z
+    );
+}
+
 void IMUProcessor::updateOrientation(const IMUData& data, float dt) {
-    // Convert gyroscope data to quaternion derivative
+    // Gyroscope-based orientation update
     Quaternion qDot(
-        0.0,
-        data.gyroX * dt / 2.0,
-        data.gyroY * dt / 2.0,
-        data.gyroZ * dt / 2.0
+        -0.5 * (data.gyroX * orientation.x + data.gyroY * orientation.y + data.gyroZ * orientation.z),
+        0.5 * (data.gyroX * orientation.w + data.gyroZ * orientation.y - data.gyroY * orientation.z),
+        0.5 * (data.gyroY * orientation.w - data.gyroZ * orientation.x + data.gyroX * orientation.z),
+        0.5 * (data.gyroZ * orientation.w + data.gyroY * orientation.x - data.gyroX * orientation.y)
     );
     
-    // Update orientation quaternion
-    orientation = orientation * qDot;
+    // Update orientation quaternion using the derivative
+    Quaternion qGyro;
+    qGyro.w = orientation.w + qDot.w * dt;
+    qGyro.x = orientation.x + qDot.x * dt;
+    qGyro.y = orientation.y + qDot.y * dt;
+    qGyro.z = orientation.z + qDot.z * dt;
+    qGyro.normalize();
+    
+    // Get accelerometer-based orientation
+    Quaternion qAccel = estimateOrientationFromAccel(data);
+    
+    // Complementary filter
+    // Use higher weight for gyroscope when there's significant motion
+    float alpha = 0.96f;  // Gyroscope weight
+    float accelMagnitude = sqrt(
+        (data.accX - biasAccX) * (data.accX - biasAccX) +
+        (data.accY - biasAccY) * (data.accY - biasAccY) +
+        (data.accZ - biasAccZ) * (data.accZ - biasAccZ)
+    );
+    
+    // Reduce gyroscope weight when acceleration is close to 1g
+    if (std::abs(accelMagnitude - G_CONSTANT) < 0.5) {
+        alpha = 0.8f;  // Give more weight to accelerometer when stable
+    }
+    
+    // Combine gyroscope and accelerometer data
+    orientation.w = alpha * qGyro.w + (1 - alpha) * qAccel.w;
+    orientation.x = alpha * qGyro.x + (1 - alpha) * qAccel.x;
+    orientation.y = alpha * qGyro.y + (1 - alpha) * qAccel.y;
+    orientation.z = alpha * qGyro.z + (1 - alpha) * qAccel.z;
+    
+    // Normalize to prevent drift
     orientation.normalize();
 }
 

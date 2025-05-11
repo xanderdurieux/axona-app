@@ -110,7 +110,7 @@ void loop() {
       Serial.println("concussionRisk||" + concussionRisk);
 
       // Get peak linear acceleration
-      double peakAcc = imuProcessor.getPeakLinearAcc();
+      double peakAcc = imuProcessor.getAccOnImpact();
       Serial.println("peakAcc||" + String(peakAcc, 2) + " g");
 
       // Get riding velocity before impact

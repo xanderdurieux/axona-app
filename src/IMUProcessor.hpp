@@ -91,6 +91,7 @@ private:
     double calculateAngularVelocity(const IMUData& data);
     double calculateVelocity(const IMUData& data);
     std::vector<IMUData> getImpactWindow(uint32_t impactTime, double window_ms);
+    Quaternion estimateOrientationFromAccel(const IMUData& data);
 };
 
 #endif
