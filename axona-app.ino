@@ -1,10 +1,8 @@
 #include <Arduino.h>
 #include <ArduinoBLE.h>
 
-#include "BLEManager.hpp"
-#include "IMUProcessor.hpp"
-
-#define DEBUG
+#include "src/BLEManager.hpp"
+#include "src/IMUProcessor.hpp"
 
 #define LED_PIN_1 11
 #define LED_PIN_2 9

@@ -1,5 +1,4 @@
 #include "IMUProcessor.hpp"
-#include <algorithm>
 
 IMUProcessor* IMUProcessor::instance = nullptr;
 
@@ -109,10 +108,47 @@ double IMUProcessor::getRidingVelocitybeforeImpact() {
     
     // Get data from 5s before impact
     std::vector<IMUData> window = getImpactWindow(lastImpactTime - 5000, 5000);
-    if (window.empty()) return 0.0;
+    if (window.size() < 2) return 0.0;
     
-    // Convert m/s to km/h (multiply by 3.6)
-    return integrateAcceleration(window) * 3.6;
+    double velocityX = 0.0, velocityY = 0.0, velocityZ = 0.0;
+    double biasX = 0.0, biasY = 0.0, biasZ = 0.0;
+    const int CALIBRATION_SAMPLES = 10;
+    
+    // Calculate initial bias for each axis
+    for (int i = 0; i < std::min(CALIBRATION_SAMPLES, (int)window.size()); i++) {
+        biasX += window[i].accX;
+        biasY += window[i].accY;
+        biasZ += window[i].accZ;
+    }
+    biasX /= CALIBRATION_SAMPLES;
+    biasY /= CALIBRATION_SAMPLES;
+    biasZ /= CALIBRATION_SAMPLES;
+    
+    // Apply high-pass filter to remove drift
+    double alpha = 0.1; // Filter coefficient
+    double filteredAccX = 0.0, filteredAccY = 0.0, filteredAccZ = 0.0;
+    
+    for (size_t i = 1; i < window.size(); ++i) {
+        double dt = (window[i].timestamp - window[i-1].timestamp) / 1000.0; // Convert to seconds
+        
+        // Calculate acceleration for each axis
+        double accX = window[i-1].accX - biasX;
+        double accY = window[i-1].accY - biasY;
+        double accZ = window[i-1].accZ - biasZ;
+        
+        // Apply high-pass filter to each axis
+        filteredAccX = alpha * (filteredAccX + accX * dt);
+        filteredAccY = alpha * (filteredAccY + accY * dt);
+        filteredAccZ = alpha * (filteredAccZ + accZ * dt);
+        
+        // Integrate filtered acceleration
+        velocityX += filteredAccX * dt;
+        velocityY += filteredAccY * dt;
+        velocityZ += filteredAccZ * dt;
+    }
+    
+    // Return magnitude of velocity in km/h
+    return sqrt(velocityX * velocityX + velocityY * velocityY + velocityZ * velocityZ) * 3.6;
 }
 
 double IMUProcessor::getHeadVelocityOnImpact() {
@@ -120,10 +156,39 @@ double IMUProcessor::getHeadVelocityOnImpact() {
     
     // Get data from 100ms before impact
     std::vector<IMUData> window = getImpactWindow(lastImpactTime - 100, 100);
-    if (window.empty()) return 0.0;
+    if (window.size() < 2) return 0.0;
     
-    // Convert m/s to km/h (multiply by 3.6)
-    return integrateAcceleration(window) * 3.6;
+    double velocityX = 0.0, velocityY = 0.0, velocityZ = 0.0;
+    double biasX = 0.0, biasY = 0.0, biasZ = 0.0;
+    const int CALIBRATION_SAMPLES = 10;
+    
+    // Calculate initial bias for each axis
+    for (int i = 0; i < std::min(CALIBRATION_SAMPLES, (int)window.size()); i++) {
+        biasX += window[i].accX;
+        biasY += window[i].accY;
+        biasZ += window[i].accZ;
+    }
+    biasX /= CALIBRATION_SAMPLES;
+    biasY /= CALIBRATION_SAMPLES;
+    biasZ /= CALIBRATION_SAMPLES;
+    
+    // Direct integration for impact velocity
+    for (size_t i = 1; i < window.size(); ++i) {
+        double dt = (window[i].timestamp - window[i-1].timestamp) / 1000.0;
+        
+        // Calculate acceleration for each axis
+        double accX = window[i-1].accX - biasX;
+        double accY = window[i-1].accY - biasY;
+        double accZ = window[i-1].accZ - biasZ;
+        
+        // Direct integration
+        velocityX += accX * dt;
+        velocityY += accY * dt;
+        velocityZ += accZ * dt;
+    }
+    
+    // Return magnitude of velocity in km/h
+    return sqrt(velocityX * velocityX + velocityY * velocityY + velocityZ * velocityZ) * 3.6;
 }
 
 double IMUProcessor::calculateLinearAcceleration(const IMUData& data) {
@@ -154,15 +219,3 @@ std::vector<IMUData> IMUProcessor::getImpactWindow(uint32_t impactTime, double w
     return window;
 }
 
-double IMUProcessor::integrateAcceleration(const std::vector<IMUData>& window) {
-    if (window.size() < 2) return 0.0;
-    
-    double velocity = 0.0;
-    for (size_t i = 1; i < window.size(); ++i) {
-        double dt = (window[i].timestamp - window[i-1].timestamp) / 1000.0; // Convert to seconds
-        double acc = calculateLinearAcceleration(window[i-1]);
-        velocity += acc * dt;
-    }
-    
-    return velocity;
-}
