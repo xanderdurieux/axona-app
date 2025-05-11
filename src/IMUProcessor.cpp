@@ -69,13 +69,15 @@ void IMUProcessor::processData(float accX, float accY, float accZ,
     if (imuDataBuffer.size() > MAX_BUFFER_SIZE) {
         imuDataBuffer.pop_front();
     }
-    
+
     // Check for impact
-    double linearAcc = calculateLinearAcceleration(data);
-    if (linearAcc > IMPACT_THRESHOLD_LOW && 
-        (timestamp - lastImpactTime) > IMPACT_COOLDOWN) {
-        impactDetected = true;
-        lastImpactTime = timestamp;
+    if (biasCalculated) {
+        double linearAcc = calculateLinearAcceleration(data);
+        if (linearAcc > IMPACT_THRESHOLD_LOW && 
+            (timestamp - lastImpactTime) > IMPACT_COOLDOWN) {
+            impactDetected = true;
+            lastImpactTime = timestamp;
+        }
     }
 }
 
